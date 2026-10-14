@@ -173,3 +173,10 @@ Short. It covers start (`podman compose up -d --build`), the URL, the location o
 - Automatic backups.
 - An export of all years in one file.
 - Weekend or public holiday warnings.
+
+## Comments
+
+### 2026-10-14: Deviations during implementation
+
+- `compose.yaml` uses `build: { context: ., dockerfile: Containerfile }`, not `build: .`. Docker Compose v5 looks for a `Dockerfile` by default. With `build: .`, `podman compose up -d --build` fails with `lstat .../Dockerfile: no such file or directory`.
+- The repo has a `.dockerignore` file. Docker Compose packs the build context on the client side and reads only `.dockerignore`, not `.containerignore`.
