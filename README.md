@@ -5,10 +5,19 @@ A personal web app to mark home office days and count them per year for the tax 
 ## Start
 
 ```sh
-podman compose up -d --build
+podman compose up -d
 ```
 
-Open <http://localhost:40000>. The app is available only on this computer.
+Podman pulls the released image `ghcr.io/nikowiss/homeoffice-tracker:1`. Open <http://localhost:40000>. The app is available only on this computer.
+
+## Update
+
+```sh
+podman compose pull
+podman compose up -d
+```
+
+The tag `:1` gets all `1.x` releases. A new major version needs a change of the tag in `compose.yaml`.
 
 ## Data
 
@@ -33,3 +42,18 @@ The container starts again only if the Podman machine starts. Set the Podman mac
 ```sh
 go test ./...
 ```
+
+## Local image
+
+```sh
+podman build -f Containerfile --build-arg VERSION=dev -t homeoffice-tracker:dev .
+```
+
+## Release
+
+1. Merge PRs to `main`. The PR title must use a conventional prefix, e.g. `feat:`, `fix:`, `chore:`. A `!` after the type, e.g. `feat!:`, marks a breaking change.
+2. Release Drafter updates the draft release on GitHub. The prefixes set the categories and the next version: breaking change → major, `feat` → minor, all other prefixes → patch.
+3. Review the draft and click "Publish release".
+4. The release workflow runs the tests. It then pushes the image for `linux/amd64` and `linux/arm64` to `ghcr.io/nikowiss/homeoffice-tracker` with the tags `X.Y.Z`, `X.Y`, `X` and `latest`.
+
+To override the calculated version, run the "Release Drafter" workflow manually with the input `version`.
