@@ -1,11 +1,11 @@
-FROM docker.io/library/golang:1.27 AS build
+FROM docker.io/library/golang:1.27.2 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /homeoffice .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /service .
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /homeoffice /homeoffice
+COPY --from=build /service /service
 EXPOSE 8080
-ENTRYPOINT ["/homeoffice"]
+ENTRYPOINT ["/service"]

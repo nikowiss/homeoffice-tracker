@@ -1,5 +1,7 @@
+name: homeoffice-tracker
+
 services:
-  homeoffice:
+  webapp:
     build:
       context: .
       dockerfile: Containerfile
