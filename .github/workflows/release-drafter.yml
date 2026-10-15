@@ -9,6 +9,9 @@ on:
       version:
         description: Override the calculated version, e.g. 1.0.0
         required: false
+      from:
+        description: Ref to compare against when no previous release exists, e.g. the first commit
+        required: false
 
 permissions:
   contents: read
@@ -27,3 +30,4 @@ jobs:
       - uses: release-drafter/release-drafter@v7
         with:
           version: ${{ inputs.version }}
+          from: ${{ inputs.from }}
