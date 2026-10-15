@@ -52,7 +52,7 @@ section {
 button { font: inherit; cursor: pointer; }
 form { margin: 0; }
 
-.today { text-align: center; }
+.today-panel { text-align: center; }
 
 .mark-today {
   width: 100%;

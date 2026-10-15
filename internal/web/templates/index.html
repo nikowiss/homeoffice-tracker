@@ -10,10 +10,10 @@
   <main>
     <h1>Homeoffice Tracker</h1>
 
-    <section class="today">
+    <section class="today-panel">
       {{if .TodayMarked}}
         <p class="today-done">Today is a home office day</p>
-        <form method="post" action="/days/{{.Today}}/delete">
+        <form method="post" action="/today/delete">
           <button class="undo" type="submit">Undo</button>
         </form>
       {{else}}
@@ -44,7 +44,7 @@
             {{else}}
             <td>
               <form method="post" action="/days/{{.Date}}{{if .Marked}}/delete{{end}}">
-                <button class="day{{if .Marked}} marked{{end}}{{if .Today}} today{{end}}" type="submit">{{.Day}}</button>
+                <button class="day{{if .Marked}} marked{{end}}{{if .IsToday}} today{{end}}" type="submit">{{.Day}}</button>
               </form>
             </td>
             {{end}}

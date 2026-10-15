@@ -180,3 +180,4 @@ Short. It covers start (`podman compose up -d --build`), the URL, the location o
 
 - `compose.yaml` uses `build: { context: ., dockerfile: Containerfile }`, not `build: .`. Docker Compose v5 looks for a `Dockerfile` by default. With `build: .`, `podman compose up -d --build` fails with `lstat .../Dockerfile: no such file or directory`.
 - The repo has a `.dockerignore` file. Docker Compose packs the build context on the client side and reads only `.dockerignore`, not `.containerignore`.
+- A new route `POST /today/delete` unmarks Today and redirects to `/` (`303`). The "Undo" button in the Today panel posts to it. The server resolves Today when the owner clicks. With `/days/{date}/delete`, the page would send the date from the time it rendered. A click after midnight would then unmark the wrong day.

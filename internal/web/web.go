@@ -12,16 +12,14 @@ import (
 	"time"
 	_ "time/tzdata"
 
+	"homeoffice-tracker/internal/civil"
 	"homeoffice-tracker/internal/store"
 )
 
 //go:embed templates/*.html templates/style.css
 var templateFS embed.FS
 
-const (
-	dateLayout  = "2006-01-02"
-	monthLayout = "2006-01"
-)
+const monthLayout = "2006-01"
 
 var berlin = mustLoadLocation("Europe/Berlin")
 
@@ -45,6 +43,7 @@ func NewHandler(s *store.Store, now func() time.Time) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", srv.index)
 	mux.HandleFunc("POST /today", srv.markToday)
+	mux.HandleFunc("POST /today/delete", srv.unmarkToday)
 	mux.HandleFunc("POST /days/{date}", srv.markDay)
 	mux.HandleFunc("POST /days/{date}/delete", srv.unmarkDay)
 	mux.HandleFunc("GET /export/{year}", srv.export)
@@ -54,13 +53,11 @@ func NewHandler(s *store.Store, now func() time.Time) http.Handler {
 	return mux
 }
 
-func (s *server) today() time.Time {
-	n := s.now().In(berlin)
-	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC)
+func (s *server) today() civil.Date {
+	return civil.DateOf(s.now().In(berlin))
 }
 
 type pageData struct {
-	Today       string
 	TodayMarked bool
 	MonthTitle  string
 	PrevMonth   string
@@ -70,11 +67,11 @@ type pageData struct {
 }
 
 type calendarDay struct {
-	Day    int
-	Date   string
-	Marked bool
-	Future bool
-	Today  bool
+	Day     int
+	Date    string
+	Marked  bool
+	Future  bool
+	IsToday bool
 }
 
 type yearCount struct {
@@ -83,22 +80,35 @@ type yearCount struct {
 	Current bool
 }
 
+func firstOfMonth(year int, month time.Month) civil.Date {
+	return civil.DateOf(time.Date(year, month, 1, 0, 0, 0, 0, time.UTC))
+}
+
+func monthParam(day civil.Date) string {
+	return fmt.Sprintf("%04d-%02d", day.Year, day.Month)
+}
+
 func (s *server) index(w http.ResponseWriter, r *http.Request) {
 	today := s.today()
-	month := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC)
+	month := firstOfMonth(today.Year, today.Month)
 	if raw := r.URL.Query().Get("month"); raw != "" {
 		parsed, err := time.Parse(monthLayout, raw)
 		if err != nil {
 			http.Error(w, "invalid month", http.StatusBadRequest)
 			return
 		}
-		if parsed.After(month) {
+		if civil.DateOf(parsed).After(month) {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		month = parsed
+		month = civil.DateOf(parsed)
 	}
-	days, err := s.store.Days(today.Year())
+	currentYearDays, err := s.store.Days(today.Year)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	selectedYearDays, err := s.store.Days(month.Year)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -108,37 +118,31 @@ func (s *server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	monthDays, err := s.store.Days(month.Year())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	data := pageData{
-		Today:       today.Format(dateLayout),
-		TodayMarked: slices.ContainsFunc(days, today.Equal),
-		MonthTitle:  month.Format("January 2006"),
-		PrevMonth:   month.AddDate(0, -1, 0).Format(monthLayout),
-		Weeks:       calendarWeeks(month, today, monthDays),
-		YearCounts:  yearCountsWithCurrent(counts, today.Year()),
+		TodayMarked: slices.Contains(currentYearDays, today),
+		MonthTitle:  fmt.Sprintf("%s %d", month.Month, month.Year),
+		PrevMonth:   monthParam(firstOfMonth(month.Year, month.Month-1)),
+		Weeks:       calendarWeeks(month, today, selectedYearDays),
+		YearCounts:  yearCountsWithCurrent(counts, today.Year),
 	}
-	if next := month.AddDate(0, 1, 0); !next.After(today) {
-		data.NextMonth = next.Format(monthLayout)
+	if next := firstOfMonth(month.Year, month.Month+1); !next.After(today) {
+		data.NextMonth = monthParam(next)
 	}
 	if err := pageTemplate.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-func calendarWeeks(month, today time.Time, marked []time.Time) [][]calendarDay {
+func calendarWeeks(month, today civil.Date, marked []civil.Date) [][]calendarDay {
 	leadingBlanks := (int(month.Weekday()) + 6) % 7
 	cells := make([]calendarDay, leadingBlanks)
-	for day := month; day.Month() == month.Month(); day = day.AddDate(0, 0, 1) {
+	for day := month; day.Month == month.Month; day = day.AddDays(1) {
 		cells = append(cells, calendarDay{
-			Day:    day.Day(),
-			Date:   day.Format(dateLayout),
-			Marked: slices.ContainsFunc(marked, day.Equal),
-			Future: day.After(today),
-			Today:  day.Equal(today),
+			Day:     day.Day,
+			Date:    day.String(),
+			Marked:  slices.Contains(marked, day),
+			Future:  day.After(today),
+			IsToday: day == today,
 		})
 	}
 	for len(cells)%7 != 0 {
@@ -169,10 +173,30 @@ func (s *server) markToday(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (s *server) markDay(w http.ResponseWriter, r *http.Request) {
-	day, err := time.Parse(dateLayout, r.PathValue("date"))
+func (s *server) unmarkToday(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.Unmark(s.today()); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func pathDate(w http.ResponseWriter, r *http.Request) (civil.Date, bool) {
+	day, err := civil.ParseDate(r.PathValue("date"))
 	if err != nil {
 		http.Error(w, "invalid date", http.StatusBadRequest)
+		return civil.Date{}, false
+	}
+	return day, true
+}
+
+func redirectToMonthOf(w http.ResponseWriter, r *http.Request, day civil.Date) {
+	http.Redirect(w, r, "/?month="+monthParam(day), http.StatusSeeOther)
+}
+
+func (s *server) markDay(w http.ResponseWriter, r *http.Request) {
+	day, ok := pathDate(w, r)
+	if !ok {
 		return
 	}
 	if day.After(s.today()) {
@@ -183,20 +207,19 @@ func (s *server) markDay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/?month="+day.Format(monthLayout), http.StatusSeeOther)
+	redirectToMonthOf(w, r, day)
 }
 
 func (s *server) unmarkDay(w http.ResponseWriter, r *http.Request) {
-	day, err := time.Parse(dateLayout, r.PathValue("date"))
-	if err != nil {
-		http.Error(w, "invalid date", http.StatusBadRequest)
+	day, ok := pathDate(w, r)
+	if !ok {
 		return
 	}
 	if err := s.store.Unmark(day); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/?month="+day.Format(monthLayout), http.StatusSeeOther)
+	redirectToMonthOf(w, r, day)
 }
 
 func (s *server) export(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +239,7 @@ func (s *server) export(w http.ResponseWriter, r *http.Request) {
 	out := csv.NewWriter(w)
 	out.Write([]string{"date", "weekday"})
 	for _, day := range days {
-		out.Write([]string{day.Format(dateLayout), day.Weekday().String()})
+		out.Write([]string{day.String(), day.Weekday().String()})
 	}
 	out.Flush()
 }

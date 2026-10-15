@@ -3,8 +3,8 @@ package store_test
 import (
 	"path/filepath"
 	"testing"
-	"time"
 
+	"homeoffice-tracker/internal/civil"
 	"homeoffice-tracker/internal/store"
 )
 
@@ -18,9 +18,9 @@ func openStore(t *testing.T) *store.Store {
 	return s
 }
 
-func date(t *testing.T, s string) time.Time {
+func date(t *testing.T, s string) civil.Date {
 	t.Helper()
-	d, err := time.Parse("2006-01-02", s)
+	d, err := civil.ParseDate(s)
 	if err != nil {
 		t.Fatalf("parse %q: %v", s, err)
 	}
@@ -134,7 +134,7 @@ func TestDaysListsOneYearOldestFirst(t *testing.T) {
 
 	var got []string
 	for _, d := range days {
-		got = append(got, d.Format("2006-01-02"))
+		got = append(got, d.String())
 	}
 	want := []string{"2026-01-01", "2026-03-02"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {

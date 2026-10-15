@@ -16,12 +16,17 @@ import (
 
 func newHandler(t *testing.T, now time.Time) http.Handler {
 	t.Helper()
+	return newHandlerWithClock(t, func() time.Time { return now })
+}
+
+func newHandlerWithClock(t *testing.T, now func() time.Time) http.Handler {
+	t.Helper()
 	s, err := store.Open(filepath.Join(t.TempDir(), "homeoffice.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return web.NewHandler(s, func() time.Time { return now })
+	return web.NewHandler(s, now)
 }
 
 func do(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {
@@ -62,15 +67,9 @@ func assertNotContains(t *testing.T, body, unwanted string) {
 	}
 }
 
-var berlin = func() *time.Location {
-	loc, err := time.LoadLocation("Europe/Berlin")
-	if err != nil {
-		panic(err)
-	}
-	return loc
-}()
+var berlinSummerTime = time.FixedZone("CEST", 2*60*60)
 
-var wednesdayMorning = time.Date(2026, 10, 14, 10, 0, 0, 0, berlin)
+var wednesdayMorning = time.Date(2026, 10, 14, 10, 0, 0, 0, berlinSummerTime)
 
 func TestOwnerMarksTodayWithOneClick(t *testing.T) {
 	h := newHandler(t, wednesdayMorning)
@@ -186,8 +185,24 @@ func TestMarkedTodayOffersUndo(t *testing.T) {
 	do(t, h, http.MethodPost, "/today")
 
 	body := do(t, h, http.MethodGet, "/").Body.String()
-	assertContains(t, body, `<form method="post" action="/days/2026-10-14/delete">`)
+	assertContains(t, body, `<form method="post" action="/today/delete">`)
 	assertContains(t, body, "Undo")
+}
+
+func TestUndoUnmarksTheTodayOfTheServer(t *testing.T) {
+	now := time.Date(2026, 10, 14, 23, 59, 0, 0, berlinSummerTime)
+	h := newHandlerWithClock(t, func() time.Time { return now })
+	do(t, h, http.MethodPost, "/today")
+	assertRedirect(t, do(t, h, http.MethodPost, "/today/delete"), "/")
+	do(t, h, http.MethodPost, "/today")
+
+	now = time.Date(2026, 10, 15, 0, 1, 0, 0, berlinSummerTime)
+	do(t, h, http.MethodPost, "/today/delete")
+
+	got := do(t, h, http.MethodGet, "/export/2026").Body.String()
+	if want := "date,weekday\n2026-10-14,Wednesday\n"; got != want {
+		t.Errorf("export 2026 = %q, want %q", got, want)
+	}
 }
 
 var yearCountRow = regexp.MustCompile(`<tr( class="current")?>\s*<td>(\d+)</td>\s*<td>(\d+)</td>\s*<td><a href="/export/(\d+)">CSV</a></td>`)
