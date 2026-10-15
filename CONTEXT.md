@@ -38,9 +38,9 @@ A CSV file that lists **Home office days**, which the owner can give to a tax ad
 ## Example dialogue
 
 > **Owner:** "I forgot to mark last Tuesday."
-> **Dev:** "Then you mark it as a **Past day**. The **Year count** for this year goes up by one."
+> **Dev:** "Then you select that **Past day** and confirm it. The **Year count** for this year goes up by one."
 > **Owner:** "I also forgot Monday, and I marked Wednesday by mistake."
-> **Dev:** "Put all three into one **Selection** and confirm it. Monday and Tuesday become **Home office days**, and Wednesday is unmarked."
+> **Dev:** "Put all three into one **Selection** and confirm it. The app marks Monday and Tuesday and unmarks Wednesday."
 
 ## Flagged ambiguities
 

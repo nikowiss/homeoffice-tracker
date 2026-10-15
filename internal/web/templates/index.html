@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main{{if .Bar}} class="has-selection"{{end}}>
+  <main{{if .ConfirmationBar}} class="has-selection"{{end}}>
     <section class="today-panel">
       {{if .TodayMarked}}
         <p class="today-done">Today is a home office day</p>
@@ -45,11 +45,11 @@
             <td>
               <form method="post" action="/days/{{.Date}}{{if .Marked}}/delete{{end}}">
                 {{template "page-state" $}}
-                <button class="day{{if .Marked}} marked{{end}} today" type="submit">{{.Day}}</button>
+                <button class="day{{with .Class}} {{.}}{{end}} today" type="submit">{{.Day}}</button>
               </form>
             </td>
             {{else}}
-            <td><a class="day{{if .Selected}}{{if .Marked}} select-unmark{{else}} select-mark{{end}}{{else if .Marked}} marked{{end}}" href="{{.Href}}">{{.Day}}</a></td>
+            <td><a class="day{{with .Class}} {{.}}{{end}}" href="{{.Href}}">{{.Day}}</a></td>
             {{end}}
             {{end}}
           </tr>
@@ -76,12 +76,11 @@
       </table>
     </section>
   </main>
-  {{with .Bar}}
-  <form class="confirm-bar" method="post" action="/selection">
+  {{with .ConfirmationBar}}
+  <form class="confirmation-bar" method="post" action="/selection">
     <input type="hidden" name="month" value="{{$.Month}}">
-    {{range .Mark}}<input type="hidden" name="mark" value="{{.}}">
-    {{end}}{{range .Unmark}}<input type="hidden" name="unmark" value="{{.}}">
-    {{end}}<p class="summary">{{.Summary}}: {{range $i, $date := .Dates}}{{if $i}}, {{end}}{{if .Unmark}}<del>{{.Label}}</del>{{else}}{{.Label}}{{end}}{{end}}</p>
+    {{range .Days}}<input type="hidden" name="{{if .Unmark}}unmark{{else}}mark{{end}}" value="{{.Date}}">
+    {{end}}<p class="summary">{{.Summary}}: {{range $i, $day := .Days}}{{if $i}}, {{end}}{{if .Unmark}}<del>{{.Label}}</del>{{else}}{{.Label}}{{end}}{{end}}</p>
     <div class="actions">
       <a class="cancel" href="{{.CancelHref}}">Cancel</a>
       <button class="confirm" type="submit">Confirm</button>

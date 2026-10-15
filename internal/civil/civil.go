@@ -24,7 +24,7 @@ func ParseDate(s string) (Date, error) {
 }
 
 func (d Date) String() string {
-	return d.midnight().Format(layout)
+	return d.Format(layout)
 }
 
 func (d Date) Format(layout string) string {
