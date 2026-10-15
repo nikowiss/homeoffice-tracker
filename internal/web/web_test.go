@@ -27,7 +27,7 @@ func newHandlerWithClock(t *testing.T, now func() time.Time) http.Handler {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return web.NewHandler(s, now)
+	return web.NewHandler(s, now, web.ReminderSetup{PublicKey: "test-public-key", SendNow: func() error { return nil }})
 }
 
 func do(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {

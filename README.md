@@ -33,6 +33,25 @@ cp data/homeoffice.db ~/Backups/homeoffice-$(date +%F).db
 podman compose start
 ```
 
+## Reminders
+
+On weekdays at 09:00, the browser shows a reminder to mark today. The reminder does not come on Saturday or Sunday, or if today is already marked.
+
+1. Click "Enable reminders" below the year counts, and allow notifications.
+2. In macOS System Settings → Notifications → Arc, allow notifications.
+
+Arc must run at the reminder time. An open window is not necessary. A Focus mode can hide the reminder. If the Mac sleeps at 09:00, the reminder comes later on the same day.
+
+To change the time, set `REMINDER_TIME` (`HH:MM`) in `compose.yaml`.
+
+To test the reminder, run:
+
+```sh
+curl -X POST http://localhost:40000/reminder/test
+```
+
+The container needs internet access to send a reminder.
+
 ## After a reboot
 
 The container starts again only if the Podman machine starts. Set the Podman machine to start at macOS login (Podman Desktop setting), or run `podman machine start`.

@@ -25,6 +25,10 @@ _Avoid_: total, sum
 **Export**:
 A CSV file that lists **Home office days**, which the owner can give to a tax advisor.
 
+**Reminder**:
+A message on a weekday morning that asks the owner to mark **Today** if it is a **Home office day**. A **Reminder** changes nothing by itself.
+_Avoid_: notification, alert, push
+
 ## Relationships
 
 - The owner **marks** a date to make it a **Home office day**, and **unmarks** it to remove it.
@@ -34,6 +38,9 @@ A CSV file that lists **Home office days**, which the owner can give to a tax ad
 - A **Year count** covers exactly one calendar year (1 January to 31 December).
 - A **Home office day** is never after **Today**. Weekends and public holidays are allowed.
 - An **Export** covers exactly one calendar year.
+- The app sends a **Reminder** only from Monday to Friday, and only if **Today** is not a **Home office day** yet. Public holidays and vacation do not stop a **Reminder**.
+- The app sends at most one **Reminder** per day. A **Reminder** is only about **Today**. It expires at the end of **Today** and never shows on a later date.
+- The owner answers a **Reminder** by marking **Today**. If **Today** is not a **Home office day**, the owner does nothing. The app records no other day types.
 
 ## Example dialogue
 
