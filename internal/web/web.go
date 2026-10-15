@@ -21,6 +21,9 @@ import (
 //go:embed templates/*.html templates/style.css
 var templateFS embed.FS
 
+//go:embed static
+var staticFS embed.FS
+
 const monthLayout = "2006-01"
 
 var berlin = mustLoadLocation("Europe/Berlin")
@@ -53,6 +56,11 @@ func NewHandler(s *store.Store, now func() time.Time) http.Handler {
 	mux.HandleFunc("GET /style.css", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFileFS(w, r, templateFS, "templates/style.css")
 	})
+	for _, name := range []string{"favicon.ico", "favicon.svg", "apple-touch-icon.png"} {
+		mux.HandleFunc("GET /"+name, func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFileFS(w, r, staticFS, "static/"+name)
+		})
+	}
 	return mux
 }
 
