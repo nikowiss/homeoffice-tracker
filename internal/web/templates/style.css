@@ -177,6 +177,8 @@ main.has-selection { padding-bottom: calc(40vh + 1rem); }
 .year-counts tr.current { background: var(--highlight); font-weight: 600; }
 
 .reminder { margin: 0; text-align: center; color: var(--muted); font-size: 0.875rem; }
+.reminder-error { display: block; margin-top: 0.5rem; }
+.reminder-error[hidden] { display: none; }
 
 .reminder button {
   padding: 0.25rem 0.75rem;

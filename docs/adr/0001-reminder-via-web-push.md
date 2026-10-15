@@ -7,5 +7,5 @@ The owner wants a **Reminder** on weekday mornings, also when no tab of the app 
 - The app now has JavaScript (a service worker and one small script). It is only for **Reminder** setup. All writes stay plain HTML forms, and the page works without JavaScript.
 - The container needs outbound internet access to reach the push service.
 - The browser app must run (a window is not necessary) to show a **Reminder**.
-- The owner uses Arc. Arc is based on Chromium but gets only maintenance updates. We did not test Web Push in Arc before the decision. If Arc does not show a **Reminder**, go back to the native macOS notification.
+- The **Reminder** depends on the browser. Arc subscribes, and the push service accepts the push, but Arc does not pass web notifications on to macOS (Arc is not in the macOS notification settings). Zen (based on Firefox) shows the **Reminder**. The owner uses Zen for the **Reminder**. If no supported browser is left, go back to the native macOS notification.
 - If the VAPID keys change, all subscriptions stop working. The server stores the keys in the SQLite file, so the normal backup keeps them.

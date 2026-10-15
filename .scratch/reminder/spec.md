@@ -146,3 +146,11 @@ Add a short section **Reminders**:
 - A settings UI for the reminder time.
 - Withdrawing a **Reminder** that is already shown when the owner marks **Today**.
 - Notifications on other devices. The app stays bound to `127.0.0.1`.
+
+## Comments
+
+### 2026-10-15: Smoke check result
+
+- Arc failed. Arc stored a subscription, and FCM accepted a probe push with `201`. But Arc never showed the **Reminder**. Arc is not in macOS System Settings → Notifications, so Arc does not pass web notifications on to macOS.
+- Zen (based on Firefox, Mozilla push service) passed the smoke check. The owner moves to Zen. The code has no Arc-specific parts, so no code change was necessary.
+- The main page now shows an error text below the button when "Enable reminders" or "Turn off" fails. Before, the error went only to the browser console, and a click seemed to do nothing.

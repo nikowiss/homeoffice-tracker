@@ -8,6 +8,7 @@
   const onText = line.querySelector(".reminder-on");
   const offButton = line.querySelector(".reminder-off");
   const blockedText = line.querySelector(".reminder-blocked");
+  const errorText = line.querySelector(".reminder-error");
   await navigator.serviceWorker.register("/sw.js");
   const registration = await navigator.serviceWorker.ready;
 
@@ -45,18 +46,22 @@
   }
 
   async function run(action) {
+    errorText.hidden = true;
     try {
       await action();
     } catch (error) {
       console.error("reminder setup:", error);
+      errorText.textContent = `Could not change reminders: ${error.name}: ${error.message}`;
+      errorText.hidden = false;
     }
     await render();
   }
 
   enableButton.addEventListener("click", () =>
     run(async () => {
-      if ((await Notification.requestPermission()) !== "granted") {
-        return;
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        throw new Error(`notification permission is "${permission}"`);
       }
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
