@@ -23,15 +23,15 @@ type Service struct {
 	now    func() time.Time
 }
 
-func New(s *store.Store, sender Sender, at TimeOfDay, now func() time.Time) *Service {
-	return &Service{store: s, sender: sender, at: at, now: now}
+func New(st *store.Store, sender Sender, at TimeOfDay, now func() time.Time) *Service {
+	return &Service{store: st, sender: sender, at: at, now: now}
 }
 
-func (r *Service) Run(ctx context.Context) {
+func (s *Service) Run(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
-		if err := r.Check(); err != nil {
+		if err := s.Check(); err != nil {
 			log.Printf("reminder check: %v", err)
 		}
 		select {
@@ -42,45 +42,45 @@ func (r *Service) Run(ctx context.Context) {
 	}
 }
 
-func (r *Service) Check() error {
-	now := r.now()
-	today := civil.DateOf(now.In(berlin))
-	marked, err := r.store.Marked(today)
+func (s *Service) Check() error {
+	now := s.now()
+	today := civil.Today(now)
+	marked, err := s.store.Marked(today)
 	if err != nil {
 		return err
 	}
-	last, err := r.store.LastReminderDate()
+	last, err := s.store.LastReminderDate()
 	if err != nil {
 		return err
 	}
-	if !Due(now, r.at, marked, last) {
+	if !Due(now, s.at, marked, last) {
 		return nil
 	}
-	accepted, err := r.sendToAll(now)
+	accepted, err := s.sendToAll(now)
 	if err != nil || !accepted {
 		return err
 	}
-	return r.store.SetLastReminderDate(today)
+	return s.store.SetLastReminderDate(today)
 }
 
-func (r *Service) SendNow() error {
-	_, err := r.sendToAll(r.now())
+func (s *Service) SendNow() error {
+	_, err := s.sendToAll(s.now())
 	return err
 }
 
-func (r *Service) sendToAll(now time.Time) (accepted bool, err error) {
-	subs, err := r.store.Subscriptions()
+func (s *Service) sendToAll(now time.Time) (accepted bool, err error) {
+	subs, err := s.store.Subscriptions()
 	if err != nil {
 		return false, err
 	}
 	ttl := SecondsUntilMidnight(now)
 	for _, sub := range subs {
-		status, err := r.sender.Send(sub, []byte(payload), ttl)
+		status, err := s.sender.Send(sub, []byte(payload), ttl)
 		switch {
 		case err != nil:
 			log.Printf("send reminder to %s: %v", sub.Endpoint, err)
 		case status == http.StatusNotFound || status == http.StatusGone:
-			if err := r.store.DeleteSubscription(sub.Endpoint); err != nil {
+			if err := s.store.DeleteSubscription(sub.Endpoint); err != nil {
 				return accepted, err
 			}
 		case status >= 200 && status < 300:

@@ -8,7 +8,8 @@
   const onText = line.querySelector(".reminder-on");
   const offButton = line.querySelector(".reminder-off");
   const blockedText = line.querySelector(".reminder-blocked");
-  const registration = await navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.register("/sw.js");
+  const registration = await navigator.serviceWorker.ready;
 
   async function post(path, body) {
     const response = await fetch(path, {
@@ -34,11 +35,13 @@
       return;
     }
     const subscription = await registration.pushManager.getSubscription();
+    show(subscription ? "on" : "enable");
     if (subscription) {
       // Re-send the subscription, so the server knows it also after a lost database.
-      await post("/reminder/subscriptions", subscription.toJSON());
+      await post("/reminder/subscriptions", subscription.toJSON()).catch((error) =>
+        console.error("reminder setup:", error),
+      );
     }
-    show(subscription ? "on" : "enable");
   }
 
   async function run(action) {

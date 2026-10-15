@@ -1,8 +1,25 @@
 package civil
 
-import "time"
+import (
+	"time"
+	_ "time/tzdata"
+)
 
 const layout = "2006-01-02"
+
+var Berlin = mustLoadLocation("Europe/Berlin")
+
+func mustLoadLocation(name string) *time.Location {
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		panic(err)
+	}
+	return loc
+}
+
+func Today(now time.Time) Date {
+	return DateOf(now.In(Berlin))
+}
 
 type Date struct {
 	Year  int

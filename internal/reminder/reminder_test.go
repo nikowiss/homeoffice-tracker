@@ -34,19 +34,9 @@ func TestParseTimeOfDay(t *testing.T) {
 	}
 }
 
-var berlin = mustLoadLocation("Europe/Berlin")
-
-func mustLoadLocation(name string) *time.Location {
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		panic(err)
-	}
-	return loc
-}
-
 func berlinTime(t *testing.T, value string) time.Time {
 	t.Helper()
-	parsed, err := time.ParseInLocation("2006-01-02 15:04", value, berlin)
+	parsed, err := time.ParseInLocation("2006-01-02 15:04", value, civil.Berlin)
 	if err != nil {
 		t.Fatalf("parse %q: %v", value, err)
 	}

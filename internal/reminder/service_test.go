@@ -194,3 +194,19 @@ func TestSendNowIgnoresTheRulesAndDoesNotCountAsTodaysReminder(t *testing.T) {
 
 	assertSent(t, sender, "https://push.example/a", "https://push.example/a")
 }
+
+func TestNetworkErrorKeepsTheSubscription(t *testing.T) {
+	s := openStore(t)
+	subscribe(t, s, "https://push.example/a")
+	offline := &fakeSender{err: errors.New("network is unreachable")}
+
+	check(t, newService(t, s, offline, "2026-10-15 09:00"))
+
+	subs, err := s.Subscriptions()
+	if err != nil {
+		t.Fatalf("subscriptions: %v", err)
+	}
+	if len(subs) != 1 || subs[0].Endpoint != "https://push.example/a" {
+		t.Errorf("subscriptions = %+v, want the one subscription to stay", subs)
+	}
+}

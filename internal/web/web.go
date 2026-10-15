@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	_ "time/tzdata"
 
 	"homeoffice-tracker/internal/civil"
 	"homeoffice-tracker/internal/store"
@@ -25,16 +24,6 @@ var templateFS embed.FS
 var staticFS embed.FS
 
 const monthLayout = "2006-01"
-
-var berlin = mustLoadLocation("Europe/Berlin")
-
-func mustLoadLocation(name string) *time.Location {
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		panic(err)
-	}
-	return loc
-}
 
 var pageTemplate = template.Must(template.ParseFS(templateFS, "templates/index.html"))
 
@@ -74,7 +63,7 @@ func NewHandler(s *store.Store, now func() time.Time, reminders ReminderSetup) h
 }
 
 func (s *server) today() civil.Date {
-	return civil.DateOf(s.now().In(berlin))
+	return civil.Today(s.now())
 }
 
 type pageData struct {

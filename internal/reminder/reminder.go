@@ -3,20 +3,9 @@ package reminder
 import (
 	"fmt"
 	"time"
-	_ "time/tzdata"
 
 	"homeoffice-tracker/internal/civil"
 )
-
-var berlin = mustLoadLocation("Europe/Berlin")
-
-func mustLoadLocation(name string) *time.Location {
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		panic(err)
-	}
-	return loc
-}
 
 type TimeOfDay struct {
 	Hour   int
@@ -35,7 +24,7 @@ func ParseTimeOfDay(raw string) (TimeOfDay, error) {
 }
 
 func Due(now time.Time, at TimeOfDay, todayMarked bool, lastReminder civil.Date) bool {
-	local := now.In(berlin)
+	local := now.In(civil.Berlin)
 	today := civil.DateOf(local)
 	switch {
 	case today.Weekday() == time.Saturday || today.Weekday() == time.Sunday:
@@ -43,12 +32,12 @@ func Due(now time.Time, at TimeOfDay, todayMarked bool, lastReminder civil.Date)
 	case todayMarked || lastReminder == today:
 		return false
 	}
-	reminderTime := time.Date(local.Year(), local.Month(), local.Day(), at.Hour, at.Minute, 0, 0, berlin)
+	reminderTime := time.Date(local.Year(), local.Month(), local.Day(), at.Hour, at.Minute, 0, 0, civil.Berlin)
 	return !local.Before(reminderTime)
 }
 
 func SecondsUntilMidnight(now time.Time) int {
-	local := now.In(berlin)
-	midnight := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, berlin)
+	local := now.In(civil.Berlin)
+	midnight := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, civil.Berlin)
 	return int(midnight.Sub(local).Seconds())
 }

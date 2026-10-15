@@ -164,6 +164,8 @@ func (s *Store) Subscriptions() ([]Subscription, error) {
 	return subs, rows.Err()
 }
 
+const setSettingSQL = `INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`
+
 const (
 	vapidPublicKey   = "vapid_public_key"
 	vapidPrivateKey  = "vapid_private_key"
@@ -198,7 +200,7 @@ func (s *Store) VAPIDKeys(generate func() (private, public string, err error)) (
 	}
 	defer tx.Rollback()
 	for key, value := range map[string]string{vapidPrivateKey: keys.Private, vapidPublicKey: keys.Public} {
-		if _, err := tx.Exec(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`, key, value); err != nil {
+		if _, err := tx.Exec(setSettingSQL, key, value); err != nil {
 			return VAPIDKeys{}, err
 		}
 	}
@@ -218,6 +220,6 @@ func (s *Store) LastReminderDate() (civil.Date, error) {
 }
 
 func (s *Store) SetLastReminderDate(day civil.Date) error {
-	_, err := s.db.Exec(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`, lastReminderDate, day.String())
+	_, err := s.db.Exec(setSettingSQL, lastReminderDate, day.String())
 	return err
 }
