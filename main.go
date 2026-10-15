@@ -10,6 +10,8 @@ import (
 	"homeoffice-tracker/internal/web"
 )
 
+var version = "dev"
+
 func main() {
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
@@ -23,6 +25,6 @@ func main() {
 	defer s.Close()
 
 	addr := ":8080"
-	log.Printf("listening on %s, database %s", addr, dbPath)
+	log.Printf("homeoffice-tracker %s listening on %s, database %s", version, addr, dbPath)
 	log.Fatal(http.ListenAndServe(addr, web.NewHandler(s, time.Now)))
 }

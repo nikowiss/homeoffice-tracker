@@ -2,9 +2,7 @@ name: homeoffice-tracker
 
 services:
   webapp:
-    build:
-      context: .
-      dockerfile: Containerfile
+    image: ghcr.io/nikowiss/homeoffice-tracker:1
     ports:
       - "127.0.0.1:40000:8080"
     environment:

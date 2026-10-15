@@ -1,0 +1,46 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+tag-prefix: 'v'
+change-template: '- $TITLE (#$NUMBER)'
+change-title-escapes: '\<*_&'
+categories:
+  - title: '⚠️ Breaking changes'
+    semver-increment: 'major'
+    exclusive: true
+    when:
+      conventional:
+        breaking: true
+  - title: '⬆️ Dependencies'
+    exclusive: true
+    when:
+      - label: 'dependencies'
+      - conventional:
+          scope: 'deps'
+  - title: '🚀 Features'
+    semver-increment: 'minor'
+    when:
+      conventional:
+        type: 'feat'
+  - title: '🐛 Bug fixes'
+    when:
+      conventional:
+        type: 'fix'
+  - title: '📝 Documentation'
+    when:
+      conventional:
+        type: 'docs'
+  - title: '🧰 Maintenance'
+    when:
+      conventional:
+        types: ['chore', 'ci', 'refactor', 'test', 'build', 'perf']
+  - title: 'Other changes'
+template: |
+  $CHANGES
+
+  ## Container image
+
+  ```sh
+  podman pull ghcr.io/$OWNER/$REPOSITORY:$RESOLVED_VERSION
+  ```
+
+  **Full changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_TAG
