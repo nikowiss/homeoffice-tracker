@@ -574,3 +574,21 @@ func TestConfirmationBarPostsExplicitChanges(t *testing.T) {
 	assertNotContains(t, bar, `name="select"`)
 	assertContains(t, bar, `<a class="cancel" href="/?month=2026-09">Cancel</a>`)
 }
+
+func TestFaviconsAreServed(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+	for target, contentType := range map[string]string{
+		"/favicon.ico":          "image/",
+		"/favicon.svg":          "image/svg+xml",
+		"/apple-touch-icon.png": "image/png",
+	} {
+		rec := do(t, h, http.MethodGet, target)
+		assertStatus(t, rec, http.StatusOK)
+		if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, contentType) {
+			t.Errorf("%s Content-Type = %q, want prefix %q", target, got, contentType)
+		}
+	}
+	body := do(t, h, http.MethodGet, "/").Body.String()
+	assertContains(t, body, `href="/favicon.svg"`)
+	assertContains(t, body, `href="/apple-touch-icon.png"`)
+}
