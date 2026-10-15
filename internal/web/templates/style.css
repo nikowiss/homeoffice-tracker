@@ -99,6 +99,13 @@ th { font-size: 0.75rem; font-weight: 500; color: var(--muted); padding-bottom: 
   color: var(--text);
 }
 
+a.day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .day.marked {
   background: var(--accent);
   border-color: var(--accent);
@@ -106,9 +113,63 @@ th { font-size: 0.75rem; font-weight: 500; color: var(--muted); padding-bottom: 
   font-weight: 600;
 }
 
+.day.select-mark {
+  border: 2px dashed var(--accent);
+  background: var(--highlight);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.day.select-unmark {
+  border: 2px dashed var(--muted);
+  color: var(--muted);
+}
+
 .day.today { outline: 2px solid var(--text); outline-offset: 1px; }
 
 .day:disabled { cursor: default; color: var(--muted); opacity: 0.4; }
+
+main.has-selection { padding-bottom: calc(40vh + 1rem); }
+
+.confirmation-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 40vh;
+  padding: 0.75rem max(1rem, calc((100% - 30rem) / 2)) calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 16px rgb(0 0 0 / 0.12);
+}
+
+.confirmation-bar .summary {
+  min-height: 0;
+  margin: 0 0 0.75rem;
+  overflow-y: auto;
+  font-size: 0.9375rem;
+}
+
+.confirmation-bar del { color: var(--muted); }
+
+.confirmation-bar .actions {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+}
+
+.confirm {
+  padding: 0.5rem 1.25rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
 
 .year-counts h2 { margin-bottom: 0.5rem; }
 .year-counts th, .year-counts td { text-align: left; padding: 0.375rem 0.25rem; }

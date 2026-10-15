@@ -141,3 +141,35 @@ func TestDaysListsOneYearOldestFirst(t *testing.T) {
 		t.Errorf("days = %v, want %v", got, want)
 	}
 }
+
+func TestApplyMarksAndUnmarksTogether(t *testing.T) {
+	s := openStore(t)
+	for _, d := range []string{"2025-12-30", "2026-10-01"} {
+		if err := s.Mark(date(t, d)); err != nil {
+			t.Fatalf("mark %s: %v", d, err)
+		}
+	}
+
+	err := s.Apply(
+		[]civil.Date{date(t, "2025-12-31"), date(t, "2026-10-06"), date(t, "2026-10-01")},
+		[]civil.Date{date(t, "2025-12-30"), date(t, "2026-10-02")},
+	)
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	counts, err := s.YearCounts()
+	if err != nil {
+		t.Fatalf("year counts: %v", err)
+	}
+	if counts[2025] != 1 || counts[2026] != 2 {
+		t.Errorf("year counts = %v, want map[2025:1 2026:2]", counts)
+	}
+	days, err := s.Days(2025)
+	if err != nil {
+		t.Fatalf("days: %v", err)
+	}
+	if len(days) != 1 || days[0].String() != "2025-12-31" {
+		t.Errorf("days 2025 = %v, want [2025-12-31]", days)
+	}
+}

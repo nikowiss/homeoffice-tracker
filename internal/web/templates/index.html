@@ -7,15 +7,17 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main>
+  <main{{if .ConfirmationBar}} class="has-selection"{{end}}>
     <section class="today-panel">
       {{if .TodayMarked}}
         <p class="today-done">Today is a home office day</p>
         <form method="post" action="/today/delete">
+          {{template "page-state" $}}
           <button class="undo" type="submit">Undo</button>
         </form>
       {{else}}
         <form method="post" action="/today">
+          {{template "page-state" $}}
           <button class="mark-today" type="submit">Mark today as home office day</button>
         </form>
       {{end}}
@@ -23,9 +25,9 @@
 
     <section class="calendar">
       <nav>
-        <a href="/?month={{.PrevMonth}}">&larr; Previous</a>
+        <a href="{{.PrevHref}}">&larr; Previous</a>
         <h2>{{.MonthTitle}}</h2>
-        {{if .NextMonth}}<a href="/?month={{.NextMonth}}">Next &rarr;</a>{{else}}<span></span>{{end}}
+        {{if .NextHref}}<a href="{{.NextHref}}">Next &rarr;</a>{{else}}<span></span>{{end}}
       </nav>
       <table>
         <thead>
@@ -39,12 +41,15 @@
             <td class="blank"></td>
             {{else if .Future}}
             <td><button class="day" type="button" disabled>{{.Day}}</button></td>
-            {{else}}
+            {{else if .IsToday}}
             <td>
               <form method="post" action="/days/{{.Date}}{{if .Marked}}/delete{{end}}">
-                <button class="day{{if .Marked}} marked{{end}}{{if .IsToday}} today{{end}}" type="submit">{{.Day}}</button>
+                {{template "page-state" $}}
+                <button class="day{{with .Class}} {{.}}{{end}} today" type="submit">{{.Day}}</button>
               </form>
             </td>
+            {{else}}
+            <td><a class="day{{with .Class}} {{.}}{{end}}" href="{{.Href}}">{{.Day}}</a></td>
             {{end}}
             {{end}}
           </tr>
@@ -71,5 +76,21 @@
       </table>
     </section>
   </main>
+  {{with .ConfirmationBar}}
+  <form class="confirmation-bar" method="post" action="/selection">
+    <input type="hidden" name="month" value="{{$.Month}}">
+    {{range .Days}}<input type="hidden" name="{{if .Unmark}}unmark{{else}}mark{{end}}" value="{{.Date}}">
+    {{end}}<p class="summary">{{.Summary}}: {{range $i, $day := .Days}}{{if $i}}, {{end}}{{if .Unmark}}<del>{{.Label}}</del>{{else}}{{.Label}}{{end}}{{end}}</p>
+    <div class="actions">
+      <a class="cancel" href="{{.CancelHref}}">Cancel</a>
+      <button class="confirm" type="submit">Confirm</button>
+    </div>
+  </form>
+  {{end}}
 </body>
 </html>
+{{define "page-state"}}
+<input type="hidden" name="month" value="{{.Month}}">
+{{range .Selection}}<input type="hidden" name="select" value="{{.}}">
+{{end}}
+{{- end}}

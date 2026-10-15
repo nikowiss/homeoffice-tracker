@@ -12,7 +12,11 @@ _Avoid_: entry, record, booking
 The current calendar date in the owner's local time zone.
 
 **Past day**:
-A calendar date before **Today** that the owner forgot to mark and adds later.
+A calendar date before **Today**.
+
+**Selection**:
+The **Past days** that the owner chose to mark or unmark but has not confirmed yet. A **Selection** changes nothing until the owner confirms it.
+_Avoid_: pending change, draft, batch
 
 **Year count**:
 The number of **Home office days** in one calendar year.
@@ -24,6 +28,9 @@ A CSV file that lists **Home office days**, which the owner can give to a tax ad
 ## Relationships
 
 - The owner **marks** a date to make it a **Home office day**, and **unmarks** it to remove it.
+- Marking or unmarking **Today** takes one action. Marking or unmarking a **Past day** needs a confirmation.
+- A **Selection** can contain marked and unmarked **Past days** from more than one month. Confirming it unmarks each marked date and marks each unmarked date.
+- Marking or unmarking **Today** does not change the **Selection**.
 - A **Year count** covers exactly one calendar year (1 January to 31 December).
 - A **Home office day** is never after **Today**. Weekends and public holidays are allowed.
 - An **Export** covers exactly one calendar year.
@@ -31,7 +38,9 @@ A CSV file that lists **Home office days**, which the owner can give to a tax ad
 ## Example dialogue
 
 > **Owner:** "I forgot to mark last Tuesday."
-> **Dev:** "Then you mark it as a **Past day**. The **Year count** for this year goes up by one."
+> **Dev:** "Then you select that **Past day** and confirm it. The **Year count** for this year goes up by one."
+> **Owner:** "I also forgot Monday, and I marked Wednesday by mistake."
+> **Dev:** "Put all three into one **Selection** and confirm it. The app marks Monday and Tuesday and unmarks Wednesday."
 
 ## Flagged ambiguities
 
