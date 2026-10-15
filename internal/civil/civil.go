@@ -27,8 +27,16 @@ func (d Date) String() string {
 	return d.midnight().Format(layout)
 }
 
+func (d Date) Format(layout string) string {
+	return d.midnight().Format(layout)
+}
+
 func (d Date) After(other Date) bool {
 	return d.midnight().After(other.midnight())
+}
+
+func (d Date) Compare(other Date) int {
+	return d.midnight().Compare(other.midnight())
 }
 
 func (d Date) AddDays(n int) Date {

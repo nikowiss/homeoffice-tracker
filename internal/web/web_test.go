@@ -3,6 +3,7 @@ package web_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -34,6 +35,27 @@ func do(t *testing.T, h http.Handler, method, target string) *httptest.ResponseR
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(method, target, nil))
 	return rec
+}
+
+func post(t *testing.T, h http.Handler, target string, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func markDays(t *testing.T, h http.Handler, dates ...string) {
+	t.Helper()
+	assertStatus(t, post(t, h, "/selection", url.Values{"mark": dates}), http.StatusSeeOther)
+}
+
+func assertExport(t *testing.T, h http.Handler, year, want string) {
+	t.Helper()
+	if got := do(t, h, http.MethodGet, "/export/"+year).Body.String(); got != want {
+		t.Errorf("export %s = %q, want %q", year, got, want)
+	}
 }
 
 func assertRedirect(t *testing.T, rec *httptest.ResponseRecorder, location string) {
@@ -118,25 +140,55 @@ func TestTodayIsTheDateInBerlin(t *testing.T) {
 func TestOwnerMarksPastDaysIncludingWeekends(t *testing.T) {
 	h := newHandler(t, wednesdayMorning)
 
-	assertRedirect(t, do(t, h, http.MethodPost, "/days/2026-03-08"), "/?month=2026-03")
-	assertRedirect(t, do(t, h, http.MethodPost, "/days/2026-01-05"), "/?month=2026-01")
+	markDays(t, h, "2026-03-08", "2026-01-05")
 
-	got := do(t, h, http.MethodGet, "/export/2026").Body.String()
-	if want := "date,weekday\n2026-01-05,Monday\n2026-03-08,Sunday\n"; got != want {
-		t.Errorf("export 2026 = %q, want %q", got, want)
+	assertExport(t, h, "2026", "date,weekday\n2026-01-05,Monday\n2026-03-08,Sunday\n")
+}
+
+func TestTappingAPastDayOnlySelectsIt(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+	markDays(t, h, "2026-10-13")
+	staleForm := url.Values{"month": {"2026-10"}, "select": {"2026-10-01"}}
+
+	assertRedirect(t, post(t, h, "/days/2026-10-13/delete", staleForm), "/?month=2026-10&select=2026-10-01&select=2026-10-13")
+	assertRedirect(t, post(t, h, "/days/2026-10-12", staleForm), "/?month=2026-10&select=2026-10-01&select=2026-10-12")
+	assertRedirect(t, post(t, h, "/days/2026-10-01", staleForm), "/?month=2026-10&select=2026-10-01")
+	assertRedirect(t, do(t, h, http.MethodPost, "/days/2026-03-08"), "/?month=2026-03&select=2026-03-08")
+
+	assertExport(t, h, "2026", "date,weekday\n2026-10-13,Tuesday\n")
+}
+
+func TestTodayCellKeepsTheSelectionAndMonth(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+	form := url.Values{"month": {"2026-10"}, "select": {"2026-10-02", "2026-09-30", "2026-10-14", "nonsense"}}
+	want := "/?month=2026-10&select=2026-09-30&select=2026-10-02"
+
+	assertRedirect(t, post(t, h, "/days/2026-10-14", form), want)
+	assertExport(t, h, "2026", "date,weekday\n2026-10-14,Wednesday\n")
+
+	assertRedirect(t, post(t, h, "/days/2026-10-14/delete", form), want)
+	assertExport(t, h, "2026", "date,weekday\n")
+}
+
+func TestDayRoutesRejectAnInvalidMonth(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+
+	for _, month := range []string{"2026-13", "october", "2026-11"} {
+		t.Run(month, func(t *testing.T) {
+			assertStatus(t, post(t, h, "/days/2026-10-14", url.Values{"month": {month}}), http.StatusBadRequest)
+		})
 	}
+	assertExport(t, h, "2026", "date,weekday\n")
 }
 
 func TestOwnerCannotMarkAFutureDate(t *testing.T) {
 	h := newHandler(t, wednesdayMorning)
 
 	assertStatus(t, do(t, h, http.MethodPost, "/days/2026-10-15"), http.StatusBadRequest)
+	assertStatus(t, do(t, h, http.MethodPost, "/days/2026-10-15/delete"), http.StatusBadRequest)
 	assertRedirect(t, do(t, h, http.MethodPost, "/days/2026-10-14"), "/?month=2026-10")
 
-	got := do(t, h, http.MethodGet, "/export/2026").Body.String()
-	if want := "date,weekday\n2026-10-14,Wednesday\n"; got != want {
-		t.Errorf("export 2026 = %q, want %q", got, want)
-	}
+	assertExport(t, h, "2026", "date,weekday\n2026-10-14,Wednesday\n")
 }
 
 func TestInvalidDatesAreRejected(t *testing.T) {
@@ -156,16 +208,11 @@ func TestInvalidDatesAreRejected(t *testing.T) {
 
 func TestOwnerUnmarksAWrongDay(t *testing.T) {
 	h := newHandler(t, wednesdayMorning)
-	do(t, h, http.MethodPost, "/days/2026-03-02")
-	do(t, h, http.MethodPost, "/days/2026-03-03")
+	markDays(t, h, "2026-03-02", "2026-03-03")
 
-	assertRedirect(t, do(t, h, http.MethodPost, "/days/2026-03-02/delete"), "/?month=2026-03")
-	assertRedirect(t, do(t, h, http.MethodPost, "/days/2026-03-04/delete"), "/?month=2026-03")
+	assertRedirect(t, post(t, h, "/selection", url.Values{"unmark": {"2026-03-02", "2026-03-04"}, "month": {"2026-03"}}), "/?month=2026-03")
 
-	got := do(t, h, http.MethodGet, "/export/2026").Body.String()
-	if want := "date,weekday\n2026-03-03,Tuesday\n"; got != want {
-		t.Errorf("export 2026 = %q, want %q", got, want)
-	}
+	assertExport(t, h, "2026", "date,weekday\n2026-03-03,Tuesday\n")
 }
 
 func TestUnmarkRejectsInvalidDates(t *testing.T) {
@@ -199,10 +246,7 @@ func TestUndoUnmarksTheTodayOfTheServer(t *testing.T) {
 	now = time.Date(2026, 10, 15, 0, 1, 0, 0, berlinSummerTime)
 	do(t, h, http.MethodPost, "/today/delete")
 
-	got := do(t, h, http.MethodGet, "/export/2026").Body.String()
-	if want := "date,weekday\n2026-10-14,Wednesday\n"; got != want {
-		t.Errorf("export 2026 = %q, want %q", got, want)
-	}
+	assertExport(t, h, "2026", "date,weekday\n2026-10-14,Wednesday\n")
 }
 
 var yearCountRow = regexp.MustCompile(`<tr( class="current")?>\s*<td>(\d+)</td>\s*<td>(\d+)</td>\s*<td><a href="/export/(\d+)">CSV</a></td>`)
@@ -225,7 +269,7 @@ func yearCountRows(t *testing.T, body string) []string {
 
 func TestYearCountsShowTheCurrentYearWithZero(t *testing.T) {
 	h := newHandler(t, wednesdayMorning)
-	do(t, h, http.MethodPost, "/days/2025-06-02")
+	markDays(t, h, "2025-06-02")
 
 	got := yearCountRows(t, do(t, h, http.MethodGet, "/").Body.String())
 
@@ -236,9 +280,7 @@ func TestYearCountsShowTheCurrentYearWithZero(t *testing.T) {
 
 func TestYearCountsListEveryYearWithDataNewestFirst(t *testing.T) {
 	h := newHandler(t, wednesdayMorning)
-	for _, d := range []string{"2019-12-31", "2024-01-01", "2024-12-31", "2026-01-01"} {
-		do(t, h, http.MethodPost, "/days/"+d)
-	}
+	markDays(t, h, "2019-12-31", "2024-01-01", "2024-12-31", "2026-01-01")
 
 	got := yearCountRows(t, do(t, h, http.MethodGet, "/").Body.String())
 
@@ -249,7 +291,7 @@ func TestYearCountsListEveryYearWithDataNewestFirst(t *testing.T) {
 
 func TestExportOfAnEmptyYearHasOnlyTheHeader(t *testing.T) {
 	h := newHandler(t, wednesdayMorning)
-	do(t, h, http.MethodPost, "/days/2026-03-02")
+	markDays(t, h, "2026-03-02")
 
 	rec := do(t, h, http.MethodGet, "/export/2020")
 
@@ -272,18 +314,81 @@ func TestMonthQueryIsValidated(t *testing.T) {
 	}
 }
 
-func TestCalendarDaysToggleTheirMark(t *testing.T) {
+type dayCell struct {
+	class string
+	href  string
+}
+
+var dayLinkPattern = regexp.MustCompile(`<a class="([^"]*)" href="([^"]*)">(\d+)</a>`)
+
+func dayLinks(body string) map[string]dayCell {
+	links := map[string]dayCell{}
+	for _, m := range dayLinkPattern.FindAllStringSubmatch(body, -1) {
+		links[m[3]] = dayCell{class: m[1], href: m[2]}
+	}
+	return links
+}
+
+func assertDayLink(t *testing.T, links map[string]dayCell, day string, want dayCell) {
+	t.Helper()
+	if got, ok := links[day]; !ok || got != want {
+		t.Errorf("link for day %s = %+v, want %+v", day, got, want)
+	}
+}
+
+func TestPastDaysLinkToTheirSelection(t *testing.T) {
 	h := newHandler(t, wednesdayMorning)
-	do(t, h, http.MethodPost, "/days/2026-10-05")
+	markDays(t, h, "2026-10-05", "2026-10-06")
 
-	body := do(t, h, http.MethodGet, "/?month=2026-10").Body.String()
+	body := do(t, h, http.MethodGet, "/?month=2026-10&select=2026-10-06&select=2026-10-07").Body.String()
+	links := dayLinks(body)
 
-	assertContains(t, body, `action="/days/2026-10-05/delete"`)
-	assertNotContains(t, body, `action="/days/2026-10-05"`)
-	assertContains(t, body, `action="/days/2026-10-06"`)
+	assertDayLink(t, links, "1", dayCell{"day", "/?month=2026-10&amp;select=2026-10-01&amp;select=2026-10-06&amp;select=2026-10-07"})
+	assertDayLink(t, links, "5", dayCell{"day marked", "/?month=2026-10&amp;select=2026-10-05&amp;select=2026-10-06&amp;select=2026-10-07"})
+	assertDayLink(t, links, "6", dayCell{"day select-unmark", "/?month=2026-10&amp;select=2026-10-07"})
+	assertDayLink(t, links, "7", dayCell{"day select-mark", "/?month=2026-10&amp;select=2026-10-06"})
+	assertDayLink(t, links, "13", dayCell{"day", "/?month=2026-10&amp;select=2026-10-06&amp;select=2026-10-07&amp;select=2026-10-13"})
+	if _, ok := links["14"]; ok {
+		t.Errorf("today has a selection link")
+	}
+	assertNotContains(t, body, `action="/days/2026-10-13"`)
 	assertContains(t, body, `action="/days/2026-10-14"`)
-	assertContains(t, body, `action="/days/2026-10-01"`)
-	assertNotContains(t, body, `action="/days/2026-09-30"`)
+}
+
+func TestTodayFormsCarryTheSelectionAndMonth(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+
+	body := do(t, h, http.MethodGet, "/?month=2026-10&select=2026-10-06&select=2026-09-30").Body.String()
+
+	_, todayCell, _ := strings.Cut(body, `action="/days/2026-10-14"`)
+	todayCell, _, _ = strings.Cut(todayCell, "</form>")
+	_, panel, _ := strings.Cut(body, `action="/today"`)
+	panel, _, _ = strings.Cut(panel, "</form>")
+	for name, form := range map[string]string{"today cell": todayCell, "today panel": panel} {
+		t.Run(name, func(t *testing.T) {
+			assertContains(t, form, `<input type="hidden" name="month" value="2026-10">`)
+			assertContains(t, form, `<input type="hidden" name="select" value="2026-09-30">`)
+			assertContains(t, form, `<input type="hidden" name="select" value="2026-10-06">`)
+		})
+	}
+}
+
+func TestInvalidSelectValuesAreIgnored(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+
+	rec := do(t, h, http.MethodGet, "/?month=2026-10&select=nonsense&select=2026-10-14&select=2026-10-15&select=2026-02-30&select=2026-10-02&select=2026-10-02")
+
+	assertStatus(t, rec, http.StatusOK)
+	assertDayLink(t, dayLinks(rec.Body.String()), "1", dayCell{"day", "/?month=2026-10&amp;select=2026-10-01&amp;select=2026-10-02"})
+}
+
+func TestMonthNavigationKeepsTheSelection(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+
+	body := do(t, h, http.MethodGet, "/?month=2026-09&select=2026-10-02&select=2026-09-30").Body.String()
+
+	assertContains(t, body, `href="/?month=2026-08&amp;select=2026-09-30&amp;select=2026-10-02"`)
+	assertContains(t, body, `href="/?month=2026-10&amp;select=2026-09-30&amp;select=2026-10-02"`)
 }
 
 var disabledDayButton = regexp.MustCompile(`<button[^>]*\bdisabled\b[^>]*>\s*15\s*</button>`)
@@ -338,4 +443,124 @@ func TestMonthNavigationStopsAtTheMonthOfToday(t *testing.T) {
 	january := do(t, h, http.MethodGet, "/?month=2026-01").Body.String()
 	assertContains(t, january, `href="/?month=2025-12"`)
 	assertContains(t, january, `href="/?month=2026-02"`)
+}
+
+func TestConfirmAppliesMarksAndUnmarksAcrossMonths(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+	markDays(t, h, "2026-09-30", "2026-10-01")
+
+	rec := post(t, h, "/selection", url.Values{
+		"mark":   {"2026-10-05", "2026-09-29", "2026-10-01"},
+		"unmark": {"2026-09-30", "2026-10-02"},
+		"month":  {"2026-10"},
+	})
+
+	assertRedirect(t, rec, "/?month=2026-10")
+	assertExport(t, h, "2026", "date,weekday\n2026-09-29,Tuesday\n2026-10-01,Thursday\n2026-10-05,Monday\n")
+}
+
+func TestConfirmRejectsAnythingButPastDaysAndWritesNothing(t *testing.T) {
+	for name, form := range map[string]url.Values{
+		"today":         {"mark": {"2026-10-13", "2026-10-14"}},
+		"future":        {"mark": {"2026-10-13", "2026-10-15"}},
+		"invalid date":  {"mark": {"2026-10-13"}, "unmark": {"2026-02-30"}},
+		"unmark today":  {"mark": {"2026-10-13"}, "unmark": {"2026-10-14"}},
+		"in both lists": {"mark": {"2026-10-13", "2026-10-12"}, "unmark": {"2026-10-12"}},
+		"invalid month": {"mark": {"2026-10-13"}, "month": {"2026-13"}},
+		"future month":  {"mark": {"2026-10-13"}, "month": {"2026-11"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHandler(t, wednesdayMorning)
+			markDays(t, h, "2026-10-12")
+
+			assertStatus(t, post(t, h, "/selection", form), http.StatusBadRequest)
+
+			assertExport(t, h, "2026", "date,weekday\n2026-10-12,Monday\n")
+		})
+	}
+}
+
+func TestConfirmWithAnEmptySelectionOnlyRedirects(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+
+	assertRedirect(t, post(t, h, "/selection", url.Values{"month": {"2026-09"}}), "/?month=2026-09")
+	assertRedirect(t, post(t, h, "/selection", nil), "/")
+
+	assertExport(t, h, "2026", "date,weekday\n")
+}
+
+func TestTodayPanelKeepsTheSelectionAndMonth(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+	form := url.Values{"month": {"2026-09"}, "select": {"2026-10-02", "2026-09-30", "2026-10-15"}}
+	want := "/?month=2026-09&select=2026-09-30&select=2026-10-02"
+
+	assertRedirect(t, post(t, h, "/today", form), want)
+	assertExport(t, h, "2026", "date,weekday\n2026-10-14,Wednesday\n")
+
+	assertRedirect(t, post(t, h, "/today/delete", form), want)
+	assertExport(t, h, "2026", "date,weekday\n")
+
+	assertStatus(t, post(t, h, "/today", url.Values{"month": {"2026-13"}}), http.StatusBadRequest)
+	assertExport(t, h, "2026", "date,weekday\n")
+}
+
+var barSummaryPattern = regexp.MustCompile(`<p class="summary">(.*)</p>`)
+
+func barSummary(t *testing.T, body string) string {
+	t.Helper()
+	m := barSummaryPattern.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("no confirmation bar summary:\n%s", body)
+	}
+	return m[1]
+}
+
+func TestConfirmationBarShowsOnlyWithASelection(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+
+	for _, target := range []string{"/", "/?month=2026-10&select=2026-10-14&select=2026-10-15"} {
+		assertNotContains(t, do(t, h, http.MethodGet, target).Body.String(), `class="confirm-bar"`)
+	}
+	assertContains(t, do(t, h, http.MethodGet, "/?select=2026-10-06").Body.String(), `class="confirm-bar"`)
+}
+
+func TestConfirmationBarSummarizesTheSelection(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+	markDays(t, h, "2025-12-31", "2026-10-01")
+
+	for name, tc := range map[string]struct{ target, want string }{
+		"mark only": {
+			"/?select=2026-10-07&select=2026-10-06",
+			"Mark 2 days: Tue 6 Oct 2026, Wed 7 Oct 2026",
+		},
+		"unmark only": {
+			"/?select=2026-10-01",
+			"Unmark 1 day: <del>Thu 1 Oct 2026</del>",
+		},
+		"mixed across years": {
+			"/?month=2026-10&select=2026-10-07&select=2025-12-31&select=2026-10-01&select=2026-09-30",
+			"Mark 2 days, unmark 2 days: Wed 30 Sep 2026, Wed 7 Oct 2026, <del>Wed 31 Dec 2025</del>, <del>Thu 1 Oct 2026</del>",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := barSummary(t, do(t, h, http.MethodGet, tc.target).Body.String()); got != tc.want {
+				t.Errorf("summary = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestConfirmationBarPostsExplicitChanges(t *testing.T) {
+	h := newHandler(t, wednesdayMorning)
+	markDays(t, h, "2025-12-31")
+
+	body := do(t, h, http.MethodGet, "/?month=2026-09&select=2026-10-07&select=2025-12-31").Body.String()
+	_, bar, _ := strings.Cut(body, `class="confirm-bar"`)
+
+	assertContains(t, bar, `action="/selection"`)
+	assertContains(t, bar, `<input type="hidden" name="month" value="2026-09">`)
+	assertContains(t, bar, `<input type="hidden" name="mark" value="2026-10-07">`)
+	assertContains(t, bar, `<input type="hidden" name="unmark" value="2025-12-31">`)
+	assertNotContains(t, bar, `name="select"`)
+	assertContains(t, bar, `<a class="cancel" href="/?month=2026-09">Cancel</a>`)
 }

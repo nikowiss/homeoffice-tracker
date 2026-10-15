@@ -9,6 +9,11 @@ import (
 	"homeoffice-tracker/internal/civil"
 )
 
+const (
+	markSQL   = `INSERT OR IGNORE INTO home_office_days (date) VALUES (?)`
+	unmarkSQL = `DELETE FROM home_office_days WHERE date = ?`
+)
+
 type Store struct {
 	db *sql.DB
 }
@@ -31,13 +36,32 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) Mark(day civil.Date) error {
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO home_office_days (date) VALUES (?)`, day.String())
+	_, err := s.db.Exec(markSQL, day.String())
 	return err
 }
 
 func (s *Store) Unmark(day civil.Date) error {
-	_, err := s.db.Exec(`DELETE FROM home_office_days WHERE date = ?`, day.String())
+	_, err := s.db.Exec(unmarkSQL, day.String())
 	return err
+}
+
+func (s *Store) Apply(mark, unmark []civil.Date) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, day := range mark {
+		if _, err := tx.Exec(markSQL, day.String()); err != nil {
+			return err
+		}
+	}
+	for _, day := range unmark {
+		if _, err := tx.Exec(unmarkSQL, day.String()); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) Days(year int) ([]civil.Date, error) {

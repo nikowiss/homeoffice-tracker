@@ -7,8 +7,10 @@ import (
 	"html/template"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 	_ "time/tzdata"
 
@@ -44,6 +46,7 @@ func NewHandler(s *store.Store, now func() time.Time) http.Handler {
 	mux.HandleFunc("GET /{$}", srv.index)
 	mux.HandleFunc("POST /today", srv.markToday)
 	mux.HandleFunc("POST /today/delete", srv.unmarkToday)
+	mux.HandleFunc("POST /selection", srv.applySelection)
 	mux.HandleFunc("POST /days/{date}", srv.markDay)
 	mux.HandleFunc("POST /days/{date}/delete", srv.unmarkDay)
 	mux.HandleFunc("GET /export/{year}", srv.export)
@@ -59,19 +62,37 @@ func (s *server) today() civil.Date {
 
 type pageData struct {
 	TodayMarked bool
+	Month       string
+	Selection   []civil.Date
 	MonthTitle  string
-	PrevMonth   string
-	NextMonth   string
+	PrevHref    string
+	NextHref    string
 	Weeks       [][]calendarDay
 	YearCounts  []yearCount
+	Bar         *confirmBar
+}
+
+type confirmBar struct {
+	Summary    string
+	Dates      []barDate
+	Mark       []civil.Date
+	Unmark     []civil.Date
+	CancelHref string
+}
+
+type barDate struct {
+	Label  string
+	Unmark bool
 }
 
 type calendarDay struct {
-	Day     int
-	Date    string
-	Marked  bool
-	Future  bool
-	IsToday bool
+	Day      int
+	Date     string
+	Href     string
+	Marked   bool
+	Selected bool
+	Future   bool
+	IsToday  bool
 }
 
 type yearCount struct {
@@ -92,23 +113,23 @@ func (s *server) index(w http.ResponseWriter, r *http.Request) {
 	today := s.today()
 	month := firstOfMonth(today.Year, today.Month)
 	if raw := r.URL.Query().Get("month"); raw != "" {
-		parsed, err := time.Parse(monthLayout, raw)
+		parsed, err := parseMonth(raw)
 		if err != nil {
 			http.Error(w, "invalid month", http.StatusBadRequest)
 			return
 		}
-		if civil.DateOf(parsed).After(month) {
+		if parsed.After(month) {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		month = civil.DateOf(parsed)
+		month = parsed
 	}
-	currentYearDays, err := s.store.Days(today.Year)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	selection := parseSelection(r.URL.Query()["select"], today)
+	years := []int{today.Year, month.Year}
+	for _, day := range selection {
+		years = append(years, day.Year)
 	}
-	selectedYearDays, err := s.store.Days(month.Year)
+	marked, err := s.markedLookup(years)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -118,37 +139,108 @@ func (s *server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	shownMonth := monthParam(month)
 	data := pageData{
-		TodayMarked: slices.Contains(currentYearDays, today),
+		TodayMarked: marked(today),
+		Month:       shownMonth,
+		Selection:   selection,
 		MonthTitle:  fmt.Sprintf("%s %d", month.Month, month.Year),
-		PrevMonth:   monthParam(firstOfMonth(month.Year, month.Month-1)),
-		Weeks:       calendarWeeks(month, today, selectedYearDays),
+		PrevHref:    pageURL(monthParam(firstOfMonth(month.Year, month.Month-1)), selection),
+		Weeks:       calendarWeeks(month, today, selection, marked),
 		YearCounts:  yearCountsWithCurrent(counts, today.Year),
 	}
 	if next := firstOfMonth(month.Year, month.Month+1); !next.After(today) {
-		data.NextMonth = monthParam(next)
+		data.NextHref = pageURL(monthParam(next), selection)
+	}
+	if len(selection) > 0 {
+		data.Bar = newConfirmBar(selection, marked, shownMonth)
 	}
 	if err := pageTemplate.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-func calendarWeeks(month, today civil.Date, marked []civil.Date) [][]calendarDay {
+func (s *server) markedLookup(years []int) (func(civil.Date) bool, error) {
+	byYear := map[int][]civil.Date{}
+	for _, year := range years {
+		if _, ok := byYear[year]; ok {
+			continue
+		}
+		days, err := s.store.Days(year)
+		if err != nil {
+			return nil, err
+		}
+		byYear[year] = days
+	}
+	return func(day civil.Date) bool {
+		return slices.Contains(byYear[day.Year], day)
+	}, nil
+}
+
+func calendarWeeks(month, today civil.Date, selection []civil.Date, marked func(civil.Date) bool) [][]calendarDay {
+	shownMonth := monthParam(month)
 	leadingBlanks := (int(month.Weekday()) + 6) % 7
 	cells := make([]calendarDay, leadingBlanks)
 	for day := month; day.Month == month.Month; day = day.AddDays(1) {
 		cells = append(cells, calendarDay{
-			Day:     day.Day,
-			Date:    day.String(),
-			Marked:  slices.Contains(marked, day),
-			Future:  day.After(today),
-			IsToday: day == today,
+			Day:      day.Day,
+			Date:     day.String(),
+			Href:     pageURL(shownMonth, toggled(selection, day)),
+			Marked:   marked(day),
+			Selected: slices.Contains(selection, day),
+			Future:   day.After(today),
+			IsToday:  day == today,
 		})
 	}
 	for len(cells)%7 != 0 {
 		cells = append(cells, calendarDay{})
 	}
 	return slices.Collect(slices.Chunk(cells, 7))
+}
+
+func newConfirmBar(selection []civil.Date, marked func(civil.Date) bool, shownMonth string) *confirmBar {
+	bar := &confirmBar{CancelHref: pageURL(shownMonth, nil)}
+	for _, day := range selection {
+		if marked(day) {
+			bar.Unmark = append(bar.Unmark, day)
+		} else {
+			bar.Mark = append(bar.Mark, day)
+		}
+	}
+	var parts []string
+	if len(bar.Mark) > 0 {
+		parts = append(parts, "mark "+dayCount(len(bar.Mark)))
+	}
+	if len(bar.Unmark) > 0 {
+		parts = append(parts, "unmark "+dayCount(len(bar.Unmark)))
+	}
+	summary := strings.Join(parts, ", ")
+	bar.Summary = strings.ToUpper(summary[:1]) + summary[1:]
+	for _, day := range bar.Mark {
+		bar.Dates = append(bar.Dates, newBarDate(day, false))
+	}
+	for _, day := range bar.Unmark {
+		bar.Dates = append(bar.Dates, newBarDate(day, true))
+	}
+	return bar
+}
+
+func newBarDate(day civil.Date, unmark bool) barDate {
+	return barDate{Label: day.Format("Mon 2 Jan 2006"), Unmark: unmark}
+}
+
+func dayCount(n int) string {
+	if n == 1 {
+		return "1 day"
+	}
+	return fmt.Sprintf("%d days", n)
+}
+
+func toggled(selection []civil.Date, day civil.Date) []civil.Date {
+	if slices.Contains(selection, day) {
+		return slices.DeleteFunc(slices.Clone(selection), func(selected civil.Date) bool { return selected == day })
+	}
+	return sortedDays(append(slices.Clone(selection), day))
 }
 
 func yearCountsWithCurrent(counts map[int]int, currentYear int) []yearCount {
@@ -166,19 +258,29 @@ func yearCountsWithCurrent(counts map[int]int, currentYear int) []yearCount {
 }
 
 func (s *server) markToday(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.Mark(s.today()); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	s.changeToday(w, r, s.store.Mark)
 }
 
 func (s *server) unmarkToday(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.Unmark(s.today()); err != nil {
+	s.changeToday(w, r, s.store.Unmark)
+}
+
+func (s *server) changeToday(w http.ResponseWriter, r *http.Request, write func(civil.Date) error) {
+	today := s.today()
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	month, err := formMonth(r, today)
+	if err != nil {
+		http.Error(w, "invalid month", http.StatusBadRequest)
+		return
+	}
+	if err := write(today); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, pageURL(month, parseSelection(r.PostForm["select"], today)), http.StatusSeeOther)
 }
 
 func pathDate(w http.ResponseWriter, r *http.Request) (civil.Date, bool) {
@@ -190,36 +292,151 @@ func pathDate(w http.ResponseWriter, r *http.Request) (civil.Date, bool) {
 	return day, true
 }
 
-func redirectToMonthOf(w http.ResponseWriter, r *http.Request, day civil.Date) {
-	http.Redirect(w, r, "/?month="+monthParam(day), http.StatusSeeOther)
-}
-
 func (s *server) markDay(w http.ResponseWriter, r *http.Request) {
-	day, ok := pathDate(w, r)
-	if !ok {
-		return
-	}
-	if day.After(s.today()) {
-		http.Error(w, "date is after today", http.StatusBadRequest)
-		return
-	}
-	if err := s.store.Mark(day); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	redirectToMonthOf(w, r, day)
+	s.changeDay(w, r, s.store.Mark)
 }
 
 func (s *server) unmarkDay(w http.ResponseWriter, r *http.Request) {
+	s.changeDay(w, r, s.store.Unmark)
+}
+
+func (s *server) changeDay(w http.ResponseWriter, r *http.Request, write func(civil.Date) error) {
 	day, ok := pathDate(w, r)
 	if !ok {
 		return
 	}
-	if err := s.store.Unmark(day); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	today := s.today()
+	if day.After(today) {
+		http.Error(w, "date is after today", http.StatusBadRequest)
 		return
 	}
-	redirectToMonthOf(w, r, day)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	month, err := formMonth(r, today)
+	if err != nil {
+		http.Error(w, "invalid month", http.StatusBadRequest)
+		return
+	}
+	if month == "" {
+		month = monthParam(day)
+	}
+	selection := parseSelection(r.PostForm["select"], today)
+	if day == today {
+		if err := write(day); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else if !slices.Contains(selection, day) {
+		selection = sortedDays(append(selection, day))
+	}
+	http.Redirect(w, r, pageURL(month, selection), http.StatusSeeOther)
+}
+
+func parseSelection(raw []string, today civil.Date) []civil.Date {
+	var selection []civil.Date
+	for _, value := range raw {
+		day, err := civil.ParseDate(value)
+		if err != nil || !today.After(day) || slices.Contains(selection, day) {
+			continue
+		}
+		selection = append(selection, day)
+	}
+	return sortedDays(selection)
+}
+
+func sortedDays(days []civil.Date) []civil.Date {
+	slices.SortFunc(days, civil.Date.Compare)
+	return days
+}
+
+func pageURL(month string, selection []civil.Date) string {
+	query := url.Values{}
+	if month != "" {
+		query.Set("month", month)
+	}
+	for _, day := range selection {
+		query.Add("select", day.String())
+	}
+	if len(query) == 0 {
+		return "/"
+	}
+	return "/?" + query.Encode()
+}
+
+func parseMonth(raw string) (civil.Date, error) {
+	parsed, err := time.Parse(monthLayout, raw)
+	if err != nil {
+		return civil.Date{}, err
+	}
+	return civil.DateOf(parsed), nil
+}
+
+func formMonth(r *http.Request, today civil.Date) (string, error) {
+	raw := r.PostForm.Get("month")
+	if raw == "" {
+		return "", nil
+	}
+	month, err := parseMonth(raw)
+	if err != nil {
+		return "", err
+	}
+	if month.After(today) {
+		return "", fmt.Errorf("month %s is after today", raw)
+	}
+	return raw, nil
+}
+
+func parsePastDays(raw []string, today civil.Date) ([]civil.Date, error) {
+	days := make([]civil.Date, 0, len(raw))
+	for _, value := range raw {
+		day, err := civil.ParseDate(value)
+		if err != nil {
+			return nil, err
+		}
+		if !today.After(day) {
+			return nil, fmt.Errorf("%s is not a past day", value)
+		}
+		days = append(days, day)
+	}
+	return days, nil
+}
+
+func (s *server) applySelection(w http.ResponseWriter, r *http.Request) {
+	today := s.today()
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	month, err := formMonth(r, today)
+	if err != nil {
+		http.Error(w, "invalid month", http.StatusBadRequest)
+		return
+	}
+	mark, err := parsePastDays(r.PostForm["mark"], today)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	unmark, err := parsePastDays(r.PostForm["unmark"], today)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	for _, day := range mark {
+		if slices.Contains(unmark, day) {
+			http.Error(w, fmt.Sprintf("%s is in mark and unmark", day), http.StatusBadRequest)
+			return
+		}
+	}
+	if len(mark) > 0 || len(unmark) > 0 {
+		if err := s.store.Apply(mark, unmark); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	http.Redirect(w, r, pageURL(month, nil), http.StatusSeeOther)
 }
 
 func (s *server) export(w http.ResponseWriter, r *http.Request) {
