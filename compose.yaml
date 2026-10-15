@@ -1,0 +1,14 @@
+name: homeoffice-tracker
+
+services:
+  webapp:
+    build:
+      context: .
+      dockerfile: Containerfile
+    ports:
+      - "127.0.0.1:40000:8080"
+    environment:
+      TZ: Europe/Berlin
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

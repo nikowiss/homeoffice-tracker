@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Homeoffice Tracker</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <section class="today-panel">
+      {{if .TodayMarked}}
+        <p class="today-done">Today is a home office day</p>
+        <form method="post" action="/today/delete">
+          <button class="undo" type="submit">Undo</button>
+        </form>
+      {{else}}
+        <form method="post" action="/today">
+          <button class="mark-today" type="submit">Mark today as home office day</button>
+        </form>
+      {{end}}
+    </section>
+
+    <section class="calendar">
+      <nav>
+        <a href="/?month={{.PrevMonth}}">&larr; Previous</a>
+        <h2>{{.MonthTitle}}</h2>
+        {{if .NextMonth}}<a href="/?month={{.NextMonth}}">Next &rarr;</a>{{else}}<span></span>{{end}}
+      </nav>
+      <table>
+        <thead>
+          <tr><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th></tr>
+        </thead>
+        <tbody>
+          {{range .Weeks}}
+          <tr>
+            {{range .}}
+            {{if eq .Day 0}}
+            <td class="blank"></td>
+            {{else if .Future}}
+            <td><button class="day" type="button" disabled>{{.Day}}</button></td>
+            {{else}}
+            <td>
+              <form method="post" action="/days/{{.Date}}{{if .Marked}}/delete{{end}}">
+                <button class="day{{if .Marked}} marked{{end}}{{if .IsToday}} today{{end}}" type="submit">{{.Day}}</button>
+              </form>
+            </td>
+            {{end}}
+            {{end}}
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="year-counts">
+      <h2>Year counts</h2>
+      <table>
+        <thead>
+          <tr><th>Year</th><th>Home office days</th><th>Export</th></tr>
+        </thead>
+        <tbody>
+          {{range .YearCounts}}
+          <tr{{if .Current}} class="current"{{end}}>
+            <td>{{.Year}}</td>
+            <td>{{.Count}}</td>
+            <td><a href="/export/{{.Year}}">CSV</a></td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

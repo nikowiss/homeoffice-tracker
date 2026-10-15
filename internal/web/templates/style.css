@@ -1,0 +1,116 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --border: #d9d9de;
+  --accent: #2f6f4f;
+  --accent-text: #ffffff;
+  --highlight: #e8f2ec;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161617;
+    --surface: #1f1f21;
+    --text: #f2f2f2;
+    --muted: #9a9aa0;
+    --border: #3a3a3e;
+    --accent: #5fb98a;
+    --accent-text: #0d1f15;
+    --highlight: #23352b;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+h1 { font-size: 1.25rem; margin: 0 0 1.5rem; }
+h2 { font-size: 1rem; margin: 0; }
+
+section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+button { font: inherit; cursor: pointer; }
+form { margin: 0; }
+
+.today-panel { text-align: center; }
+
+.mark-today {
+  width: 100%;
+  padding: 1rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.today-done { margin: 0 0 0.5rem; font-weight: 600; color: var(--accent); }
+
+.undo {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.calendar nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+a { color: var(--accent); }
+
+table { width: 100%; border-collapse: collapse; }
+th { font-size: 0.75rem; font-weight: 500; color: var(--muted); padding-bottom: 0.25rem; }
+
+.calendar td { padding: 2px; text-align: center; }
+
+.day {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+}
+
+.day.marked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.day.today { outline: 2px solid var(--text); outline-offset: 1px; }
+
+.day:disabled { cursor: default; color: var(--muted); opacity: 0.4; }
+
+.year-counts h2 { margin-bottom: 0.5rem; }
+.year-counts th, .year-counts td { text-align: left; padding: 0.375rem 0.25rem; }
+.year-counts td:nth-child(2) { font-variant-numeric: tabular-nums; }
+.year-counts tr.current { background: var(--highlight); font-weight: 600; }

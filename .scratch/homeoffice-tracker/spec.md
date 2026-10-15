@@ -111,9 +111,13 @@ The owner runs Podman on macOS (verified: Podman 6.0.2, `libkrun` machine, rootf
 **compose.yaml**:
 
 ```yaml
+name: homeoffice-tracker
+
 services:
-  homeoffice:
-    build: .
+  webapp:
+    build:
+      context: .
+      dockerfile: Containerfile
     ports:
       - "127.0.0.1:40000:8080"
     environment:
@@ -173,3 +177,17 @@ Short. It covers start (`podman compose up -d --build`), the URL, the location o
 - Automatic backups.
 - An export of all years in one file.
 - Weekend or public holiday warnings.
+
+## Comments
+
+### 2026-10-14: Deviations during implementation
+
+- `compose.yaml` uses `build: { context: ., dockerfile: Containerfile }`, not `build: .`. Docker Compose v5 looks for a `Dockerfile` by default. With `build: .`, `podman compose up -d --build` fails with `lstat .../Dockerfile: no such file or directory`.
+- The repo has a `.dockerignore` file. Docker Compose packs the build context on the client side and reads only `.dockerignore`, not `.containerignore`.
+- A new route `POST /today/delete` unmarks Today and redirects to `/` (`303`). The "Undo" button in the Today panel posts to it. The server resolves Today when the owner clicks. With `/days/{date}/delete`, the page would send the date from the time it rendered. A click after midnight would then unmark the wrong day.
+
+### 2026-10-15: Compose project and service names
+
+- `compose.yaml` sets the project name `homeoffice-tracker` with `name:`. The container name then does not depend on the folder name.
+- The compose service has the name `webapp`, not `homeoffice`. The container has the name `homeoffice-tracker-webapp-1`.
+- Switch from the old service name one time: run `podman compose up -d --build --remove-orphans`. This command removes the old container `homeoffice-tracker-homeoffice-1`, which also uses port 40000. The data stays in `./data`.
