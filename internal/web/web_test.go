@@ -107,6 +107,51 @@ func TestOwnerMarksTodayWithOneClick(t *testing.T) {
 	assertNotContains(t, after.Body.String(), "Mark today as home office day")
 }
 
+func postWithHeaders(t *testing.T, h http.Handler, target string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, target, nil)
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestOtherSitesCannotWrite(t *testing.T) {
+	tests := map[string]map[string]string{
+		"fetch metadata":         {"Sec-Fetch-Site": "cross-site"},
+		"origin over plain http": {"Origin": "http://evil.example"},
+	}
+	for name, headers := range tests {
+		t.Run(name, func(t *testing.T) {
+			h := newHandler(t, wednesdayMorning)
+
+			for _, target := range []string{"/today", "/selection", "/reminder/subscriptions", "/reminder/test"} {
+				assertStatus(t, postWithHeaders(t, h, target, headers), http.StatusForbidden)
+			}
+
+			assertContains(t, do(t, h, http.MethodGet, "/").Body.String(), "Mark today as home office day")
+		})
+	}
+}
+
+func TestOwnBrowserCanWrite(t *testing.T) {
+	tests := map[string]map[string]string{
+		"fetch metadata":         {"Sec-Fetch-Site": "same-origin"},
+		"origin over plain http": {"Origin": "http://example.com"},
+	}
+	for name, headers := range tests {
+		t.Run(name, func(t *testing.T) {
+			h := newHandler(t, wednesdayMorning)
+
+			assertRedirect(t, postWithHeaders(t, h, "/today", headers), "/")
+
+			assertContains(t, do(t, h, http.MethodGet, "/").Body.String(), "Today is a home office day")
+		})
+	}
+}
+
 func TestExportListsTheYearAsCSV(t *testing.T) {
 	h := newHandler(t, wednesdayMorning)
 	do(t, h, http.MethodPost, "/today")
