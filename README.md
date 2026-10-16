@@ -1,6 +1,8 @@
 # Homeoffice Tracker
 
-A personal web app to mark home office days and count them per year for the tax report.
+A personal web app to mark home office days and count them per year.
+
+<img src="docs/images/preview.png" alt="Screenshot of the Homeoffice Tracker with the month calendar and the year counts" width="400">
 
 ## Start
 

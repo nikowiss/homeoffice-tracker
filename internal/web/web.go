@@ -59,7 +59,7 @@ func NewHandler(s *store.Store, now func() time.Time, reminders ReminderSetup) h
 			http.ServeFileFS(w, r, staticFS, "static/"+name)
 		})
 	}
-	return mux
+	return http.NewCrossOriginProtection().Handler(mux)
 }
 
 func (s *server) today() civil.Date {
