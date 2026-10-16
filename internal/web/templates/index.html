@@ -8,6 +8,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/style.css">
+  <script src="/reminder.js" defer></script>
 </head>
 <body>
   <main{{if .ConfirmationBar}} class="has-selection"{{end}}>
@@ -78,6 +79,13 @@
         </tbody>
       </table>
     </section>
+
+    <p class="reminder" data-vapid-public-key="{{.VAPIDPublicKey}}" hidden>
+      <button class="reminder-enable" type="button" hidden>Enable reminders</button>
+      <span class="reminder-on" hidden>Reminders on · <button class="reminder-off" type="button">Turn off</button></span>
+      <span class="reminder-blocked" hidden>Notifications are blocked for this site in the browser settings.</span>
+      <span class="reminder-error" hidden></span>
+    </p>
   </main>
   {{with .ConfirmationBar}}
   <form class="confirmation-bar" method="post" action="/selection">

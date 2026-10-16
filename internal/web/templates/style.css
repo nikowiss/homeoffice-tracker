@@ -175,3 +175,16 @@ main.has-selection { padding-bottom: calc(40vh + 1rem); }
 .year-counts th, .year-counts td { text-align: left; padding: 0.375rem 0.25rem; }
 .year-counts td:nth-child(2) { font-variant-numeric: tabular-nums; }
 .year-counts tr.current { background: var(--highlight); font-weight: 600; }
+
+.reminder { margin: 0; text-align: center; color: var(--muted); font-size: 0.875rem; }
+.reminder-error { display: block; margin-top: 0.5rem; }
+.reminder-error[hidden] { display: none; }
+
+.reminder button {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.875rem;
+}

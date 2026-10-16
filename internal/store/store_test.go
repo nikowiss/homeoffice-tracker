@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"homeoffice-tracker/internal/civil"
@@ -171,5 +172,126 @@ func TestApplyMarksAndUnmarksTogether(t *testing.T) {
 	}
 	if len(days) != 1 || days[0].String() != "2025-12-31" {
 		t.Errorf("days 2025 = %v, want [2025-12-31]", days)
+	}
+}
+
+func assertSubscriptions(t *testing.T, s *store.Store, want ...store.Subscription) {
+	t.Helper()
+	got, err := s.Subscriptions()
+	if err != nil {
+		t.Fatalf("subscriptions: %v", err)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("subscriptions = %+v, want %+v", got, want)
+	}
+}
+
+func TestSavingASubscriptionAgainReplacesItsKeys(t *testing.T) {
+	s := openStore(t)
+	old := store.Subscription{Endpoint: "https://push.example/a", P256dh: "key-1", Auth: "auth-1"}
+	renewed := store.Subscription{Endpoint: "https://push.example/a", P256dh: "key-2", Auth: "auth-2"}
+
+	for _, sub := range []store.Subscription{old, renewed} {
+		if err := s.SaveSubscription(sub); err != nil {
+			t.Fatalf("save subscription: %v", err)
+		}
+	}
+
+	assertSubscriptions(t, s, renewed)
+}
+
+func TestDeletedSubscriptionIsGone(t *testing.T) {
+	s := openStore(t)
+	a := store.Subscription{Endpoint: "https://push.example/a", P256dh: "key-a", Auth: "auth-a"}
+	b := store.Subscription{Endpoint: "https://push.example/b", P256dh: "key-b", Auth: "auth-b"}
+	for _, sub := range []store.Subscription{a, b} {
+		if err := s.SaveSubscription(sub); err != nil {
+			t.Fatalf("save subscription: %v", err)
+		}
+	}
+
+	if err := s.DeleteSubscription(a.Endpoint); err != nil {
+		t.Fatalf("delete subscription: %v", err)
+	}
+	if err := s.DeleteSubscription("https://push.example/unknown"); err != nil {
+		t.Fatalf("delete unknown subscription: %v", err)
+	}
+
+	assertSubscriptions(t, s, b)
+}
+
+func TestVAPIDKeysStayAfterReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "homeoffice.db")
+	keysFrom := func(private, public string) func() (string, string, error) {
+		return func() (string, string, error) { return private, public, nil }
+	}
+
+	first, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	created, err := first.VAPIDKeys(keysFrom("private-1", "public-1"))
+	if err != nil {
+		t.Fatalf("vapid keys: %v", err)
+	}
+	first.Close()
+
+	second, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("reopen store: %v", err)
+	}
+	defer second.Close()
+	loaded, err := second.VAPIDKeys(keysFrom("private-2", "public-2"))
+	if err != nil {
+		t.Fatalf("vapid keys after reopen: %v", err)
+	}
+
+	want := store.VAPIDKeys{Private: "private-1", Public: "public-1"}
+	if created != want || loaded != want {
+		t.Errorf("keys = %+v then %+v, want %+v both times", created, loaded, want)
+	}
+}
+
+func TestLastReminderDate(t *testing.T) {
+	s := openStore(t)
+
+	initial, err := s.LastReminderDate()
+	if err != nil {
+		t.Fatalf("last reminder date: %v", err)
+	}
+	if initial != (civil.Date{}) {
+		t.Errorf("initial last reminder date = %v, want zero date", initial)
+	}
+
+	if err := s.SetLastReminderDate(date(t, "2026-10-14")); err != nil {
+		t.Fatalf("set last reminder date: %v", err)
+	}
+	if err := s.SetLastReminderDate(date(t, "2026-10-15")); err != nil {
+		t.Fatalf("set last reminder date again: %v", err)
+	}
+
+	got, err := s.LastReminderDate()
+	if err != nil {
+		t.Fatalf("last reminder date: %v", err)
+	}
+	if want := date(t, "2026-10-15"); got != want {
+		t.Errorf("last reminder date = %v, want %v", got, want)
+	}
+}
+
+func TestMarkedReportsOneDay(t *testing.T) {
+	s := openStore(t)
+	if err := s.Mark(date(t, "2026-10-15")); err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+
+	for day, want := range map[string]bool{"2026-10-15": true, "2026-10-14": false} {
+		got, err := s.Marked(date(t, day))
+		if err != nil {
+			t.Fatalf("marked %s: %v", day, err)
+		}
+		if got != want {
+			t.Errorf("marked %s = %v, want %v", day, got, want)
+		}
 	}
 }

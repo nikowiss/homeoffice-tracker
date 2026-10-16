@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	_ "time/tzdata"
 
 	"homeoffice-tracker/internal/civil"
 	"homeoffice-tracker/internal/store"
@@ -26,25 +25,21 @@ var staticFS embed.FS
 
 const monthLayout = "2006-01"
 
-var berlin = mustLoadLocation("Europe/Berlin")
-
-func mustLoadLocation(name string) *time.Location {
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		panic(err)
-	}
-	return loc
-}
-
 var pageTemplate = template.Must(template.ParseFS(templateFS, "templates/index.html"))
 
-type server struct {
-	store *store.Store
-	now   func() time.Time
+type ReminderSetup struct {
+	PublicKey string
+	SendNow   func() error
 }
 
-func NewHandler(s *store.Store, now func() time.Time) http.Handler {
-	srv := &server{store: s, now: now}
+type server struct {
+	store     *store.Store
+	now       func() time.Time
+	reminders ReminderSetup
+}
+
+func NewHandler(s *store.Store, now func() time.Time, reminders ReminderSetup) http.Handler {
+	srv := &server{store: s, now: now, reminders: reminders}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", srv.index)
 	mux.HandleFunc("POST /today", srv.markToday)
@@ -53,10 +48,13 @@ func NewHandler(s *store.Store, now func() time.Time) http.Handler {
 	mux.HandleFunc("POST /days/{date}", srv.markTodayCell)
 	mux.HandleFunc("POST /days/{date}/delete", srv.unmarkTodayCell)
 	mux.HandleFunc("GET /export/{year}", srv.export)
+	mux.HandleFunc("POST /reminder/subscriptions", srv.subscribe)
+	mux.HandleFunc("POST /reminder/subscriptions/delete", srv.unsubscribe)
+	mux.HandleFunc("POST /reminder/test", srv.sendTestReminder)
 	mux.HandleFunc("GET /style.css", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFileFS(w, r, templateFS, "templates/style.css")
 	})
-	for _, name := range []string{"favicon.ico", "favicon.svg", "apple-touch-icon.png"} {
+	for _, name := range []string{"favicon.ico", "favicon.svg", "apple-touch-icon.png", "sw.js", "reminder.js"} {
 		mux.HandleFunc("GET /"+name, func(w http.ResponseWriter, r *http.Request) {
 			http.ServeFileFS(w, r, staticFS, "static/"+name)
 		})
@@ -65,7 +63,7 @@ func NewHandler(s *store.Store, now func() time.Time) http.Handler {
 }
 
 func (s *server) today() civil.Date {
-	return civil.DateOf(s.now().In(berlin))
+	return civil.Today(s.now())
 }
 
 type pageData struct {
@@ -78,6 +76,7 @@ type pageData struct {
 	Weeks           [][]calendarDay
 	YearCounts      []yearCount
 	ConfirmationBar *confirmationBar
+	VAPIDPublicKey  string
 }
 
 type confirmationBar struct {
@@ -157,13 +156,14 @@ func (s *server) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := pageData{
-		TodayMarked: marked(today),
-		Month:       monthParam(month),
-		Selection:   state.selection,
-		MonthTitle:  fmt.Sprintf("%s %d", month.Month, month.Year),
-		PrevHref:    pageState{month: firstOfMonth(month.Year, month.Month-1), selection: state.selection}.url(),
-		Weeks:       calendarWeeks(state, today, marked),
-		YearCounts:  yearCountsWithCurrent(counts, today.Year),
+		TodayMarked:    marked(today),
+		Month:          monthParam(month),
+		Selection:      state.selection,
+		MonthTitle:     fmt.Sprintf("%s %d", month.Month, month.Year),
+		PrevHref:       pageState{month: firstOfMonth(month.Year, month.Month-1), selection: state.selection}.url(),
+		Weeks:          calendarWeeks(state, today, marked),
+		YearCounts:     yearCountsWithCurrent(counts, today.Year),
+		VAPIDPublicKey: s.reminders.PublicKey,
 	}
 	if next := firstOfMonth(month.Year, month.Month+1); !next.After(today) {
 		data.NextHref = pageState{month: next, selection: state.selection}.url()
