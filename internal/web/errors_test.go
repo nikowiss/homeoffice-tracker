@@ -2,8 +2,9 @@ package web_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,16 +19,16 @@ import (
 
 func TestServerErrorsAreLoggedNotShown(t *testing.T) {
 	var logs bytes.Buffer
-	previous := log.Writer()
-	log.SetOutput(&logs)
-	t.Cleanup(func() { log.SetOutput(previous) })
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 
-	s, err := store.Open(filepath.Join(t.TempDir(), "homeoffice.db"))
+	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "homeoffice.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	s.Close()
-	sendNow := func() error { return errors.New("push service exploded") }
+	sendNow := func(context.Context) error { return errors.New("push service exploded") }
 	h := web.NewHandler(s, func() time.Time { return wednesdayMorning }, web.ReminderSetup{PublicKey: "test-public-key", SendNow: sendNow})
 
 	tests := []struct {

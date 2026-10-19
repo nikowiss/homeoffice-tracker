@@ -26,7 +26,7 @@ func TestWebPushSenderGivesUpOnHangingPushService(t *testing.T) {
 	sender := reminder.WebPushSender{Keys: vapidKeys(t), Timeout: 100 * time.Millisecond}
 	done := make(chan error, 1)
 	go func() {
-		_, err := sender.Send(browserSubscription(t, pushService.URL), []byte("{}"), 60)
+		_, err := sender.Send(t.Context(), browserSubscription(t, pushService.URL), []byte("{}"), 60)
 		done <- err
 	}()
 

@@ -1,6 +1,7 @@
 package reminder
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"time"
@@ -20,12 +21,12 @@ type WebPushSender struct {
 	Timeout time.Duration
 }
 
-func (w WebPushSender) Send(sub store.Subscription, payload []byte, ttlSeconds int) (int, error) {
+func (w WebPushSender) Send(ctx context.Context, sub store.Subscription, payload []byte, ttlSeconds int) (int, error) {
 	timeout := w.Timeout
 	if timeout == 0 {
 		timeout = defaultSendTimeout
 	}
-	resp, err := webpush.SendNotification(payload, &webpush.Subscription{
+	resp, err := webpush.SendNotificationWithContext(ctx, payload, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys:     webpush.Keys{P256dh: sub.P256dh, Auth: sub.Auth},
 	}, &webpush.Options{

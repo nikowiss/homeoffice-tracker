@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -19,14 +20,14 @@ type recordingSender struct {
 	endpoints []string
 }
 
-func (r *recordingSender) Send(sub store.Subscription, payload []byte, ttl int) (int, error) {
+func (r *recordingSender) Send(_ context.Context, sub store.Subscription, payload []byte, ttl int) (int, error) {
 	r.endpoints = append(r.endpoints, sub.Endpoint)
 	return http.StatusCreated, nil
 }
 
 func newReminderHandler(t *testing.T) (http.Handler, *recordingSender) {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "homeoffice.db"))
+	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "homeoffice.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

@@ -13,14 +13,15 @@ type TimeOfDay struct {
 }
 
 func ParseTimeOfDay(raw string) (TimeOfDay, error) {
-	if raw == "" {
-		return TimeOfDay{Hour: 9}, nil
-	}
 	t, err := time.Parse("15:04", raw)
 	if err != nil || len(raw) != len("15:04") {
-		return TimeOfDay{}, fmt.Errorf("invalid REMINDER_TIME %q: want HH:MM", raw)
+		return TimeOfDay{}, fmt.Errorf("invalid time of day %q: want HH:MM", raw)
 	}
 	return TimeOfDay{Hour: t.Hour(), Minute: t.Minute()}, nil
+}
+
+func (t TimeOfDay) String() string {
+	return fmt.Sprintf("%02d:%02d", t.Hour, t.Minute)
 }
 
 func Due(now time.Time, at TimeOfDay, todayMarked bool, lastReminder civil.Date) bool {

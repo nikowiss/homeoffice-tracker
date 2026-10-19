@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,12 +23,12 @@ func newHandler(t *testing.T, now time.Time) http.Handler {
 
 func newHandlerWithClock(t *testing.T, now func() time.Time) http.Handler {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "homeoffice.db"))
+	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "homeoffice.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return web.NewHandler(s, now, web.ReminderSetup{PublicKey: "test-public-key", SendNow: func() error { return nil }})
+	return web.NewHandler(s, now, web.ReminderSetup{PublicKey: "test-public-key", SendNow: func(context.Context) error { return nil }})
 }
 
 func do(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {

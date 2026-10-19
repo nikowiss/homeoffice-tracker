@@ -11,7 +11,7 @@ import (
 
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "homeoffice.db"))
+	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "homeoffice.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -31,11 +31,11 @@ func date(t *testing.T, s string) civil.Date {
 func TestMarkedDayCountsInItsYear(t *testing.T) {
 	s := openStore(t)
 
-	if err := s.Mark(date(t, "2026-10-14")); err != nil {
+	if err := s.Mark(t.Context(), date(t, "2026-10-14")); err != nil {
 		t.Fatalf("mark: %v", err)
 	}
 
-	counts, err := s.YearCounts()
+	counts, err := s.YearCounts(t.Context())
 	if err != nil {
 		t.Fatalf("year counts: %v", err)
 	}
@@ -47,15 +47,15 @@ func TestMarkedDayCountsInItsYear(t *testing.T) {
 func TestUnmarkedDayNoLongerCounts(t *testing.T) {
 	s := openStore(t)
 	day := date(t, "2026-10-14")
-	if err := s.Mark(day); err != nil {
+	if err := s.Mark(t.Context(), day); err != nil {
 		t.Fatalf("mark: %v", err)
 	}
 
-	if err := s.Unmark(day); err != nil {
+	if err := s.Unmark(t.Context(), day); err != nil {
 		t.Fatalf("unmark: %v", err)
 	}
 
-	counts, err := s.YearCounts()
+	counts, err := s.YearCounts(t.Context())
 	if err != nil {
 		t.Fatalf("year counts: %v", err)
 	}
@@ -69,12 +69,12 @@ func TestMarkingTwiceCountsOnce(t *testing.T) {
 	day := date(t, "2026-10-14")
 
 	for range 2 {
-		if err := s.Mark(day); err != nil {
+		if err := s.Mark(t.Context(), day); err != nil {
 			t.Fatalf("mark: %v", err)
 		}
 	}
 
-	counts, err := s.YearCounts()
+	counts, err := s.YearCounts(t.Context())
 	if err != nil {
 		t.Fatalf("year counts: %v", err)
 	}
@@ -85,15 +85,15 @@ func TestMarkingTwiceCountsOnce(t *testing.T) {
 
 func TestUnmarkingAnUnmarkedDayDoesNothing(t *testing.T) {
 	s := openStore(t)
-	if err := s.Mark(date(t, "2026-10-13")); err != nil {
+	if err := s.Mark(t.Context(), date(t, "2026-10-13")); err != nil {
 		t.Fatalf("mark: %v", err)
 	}
 
-	if err := s.Unmark(date(t, "2026-10-14")); err != nil {
+	if err := s.Unmark(t.Context(), date(t, "2026-10-14")); err != nil {
 		t.Fatalf("unmark: %v", err)
 	}
 
-	counts, err := s.YearCounts()
+	counts, err := s.YearCounts(t.Context())
 	if err != nil {
 		t.Fatalf("year counts: %v", err)
 	}
@@ -105,12 +105,12 @@ func TestUnmarkingAnUnmarkedDayDoesNothing(t *testing.T) {
 func TestYearCountsSplitAtTheYearBoundary(t *testing.T) {
 	s := openStore(t)
 	for _, d := range []string{"2025-12-31", "2026-01-01", "2026-01-02"} {
-		if err := s.Mark(date(t, d)); err != nil {
+		if err := s.Mark(t.Context(), date(t, d)); err != nil {
 			t.Fatalf("mark %s: %v", d, err)
 		}
 	}
 
-	counts, err := s.YearCounts()
+	counts, err := s.YearCounts(t.Context())
 	if err != nil {
 		t.Fatalf("year counts: %v", err)
 	}
@@ -123,12 +123,12 @@ func TestYearCountsSplitAtTheYearBoundary(t *testing.T) {
 func TestDaysListsOneYearOldestFirst(t *testing.T) {
 	s := openStore(t)
 	for _, d := range []string{"2026-03-02", "2025-12-31", "2026-01-01", "2027-01-01"} {
-		if err := s.Mark(date(t, d)); err != nil {
+		if err := s.Mark(t.Context(), date(t, d)); err != nil {
 			t.Fatalf("mark %s: %v", d, err)
 		}
 	}
 
-	days, err := s.Days(2026)
+	days, err := s.Days(t.Context(), 2026)
 	if err != nil {
 		t.Fatalf("days: %v", err)
 	}
@@ -146,12 +146,12 @@ func TestDaysListsOneYearOldestFirst(t *testing.T) {
 func TestApplyMarksAndUnmarksTogether(t *testing.T) {
 	s := openStore(t)
 	for _, d := range []string{"2025-12-30", "2026-10-01"} {
-		if err := s.Mark(date(t, d)); err != nil {
+		if err := s.Mark(t.Context(), date(t, d)); err != nil {
 			t.Fatalf("mark %s: %v", d, err)
 		}
 	}
 
-	err := s.Apply(
+	err := s.Apply(t.Context(),
 		[]civil.Date{date(t, "2025-12-31"), date(t, "2026-10-06"), date(t, "2026-10-01")},
 		[]civil.Date{date(t, "2025-12-30"), date(t, "2026-10-02")},
 	)
@@ -159,14 +159,14 @@ func TestApplyMarksAndUnmarksTogether(t *testing.T) {
 		t.Fatalf("apply: %v", err)
 	}
 
-	counts, err := s.YearCounts()
+	counts, err := s.YearCounts(t.Context())
 	if err != nil {
 		t.Fatalf("year counts: %v", err)
 	}
 	if counts[2025] != 1 || counts[2026] != 2 {
 		t.Errorf("year counts = %v, want map[2025:1 2026:2]", counts)
 	}
-	days, err := s.Days(2025)
+	days, err := s.Days(t.Context(), 2025)
 	if err != nil {
 		t.Fatalf("days: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestApplyMarksAndUnmarksTogether(t *testing.T) {
 
 func assertSubscriptions(t *testing.T, s *store.Store, want ...store.Subscription) {
 	t.Helper()
-	got, err := s.Subscriptions()
+	got, err := s.Subscriptions(t.Context())
 	if err != nil {
 		t.Fatalf("subscriptions: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestSavingASubscriptionAgainReplacesItsKeys(t *testing.T) {
 	renewed := store.Subscription{Endpoint: "https://push.example/a", P256dh: "key-2", Auth: "auth-2"}
 
 	for _, sub := range []store.Subscription{old, renewed} {
-		if err := s.SaveSubscription(sub); err != nil {
+		if err := s.SaveSubscription(t.Context(), sub); err != nil {
 			t.Fatalf("save subscription: %v", err)
 		}
 	}
@@ -205,15 +205,15 @@ func TestDeletedSubscriptionIsGone(t *testing.T) {
 	a := store.Subscription{Endpoint: "https://push.example/a", P256dh: "key-a", Auth: "auth-a"}
 	b := store.Subscription{Endpoint: "https://push.example/b", P256dh: "key-b", Auth: "auth-b"}
 	for _, sub := range []store.Subscription{a, b} {
-		if err := s.SaveSubscription(sub); err != nil {
+		if err := s.SaveSubscription(t.Context(), sub); err != nil {
 			t.Fatalf("save subscription: %v", err)
 		}
 	}
 
-	if err := s.DeleteSubscription(a.Endpoint); err != nil {
+	if err := s.DeleteSubscription(t.Context(), a.Endpoint); err != nil {
 		t.Fatalf("delete subscription: %v", err)
 	}
-	if err := s.DeleteSubscription("https://push.example/unknown"); err != nil {
+	if err := s.DeleteSubscription(t.Context(), "https://push.example/unknown"); err != nil {
 		t.Fatalf("delete unknown subscription: %v", err)
 	}
 
@@ -226,22 +226,22 @@ func TestVAPIDKeysStayAfterReopen(t *testing.T) {
 		return func() (string, string, error) { return private, public, nil }
 	}
 
-	first, err := store.Open(path)
+	first, err := store.Open(t.Context(), path)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	created, err := first.VAPIDKeys(keysFrom("private-1", "public-1"))
+	created, err := first.VAPIDKeys(t.Context(), keysFrom("private-1", "public-1"))
 	if err != nil {
 		t.Fatalf("vapid keys: %v", err)
 	}
 	first.Close()
 
-	second, err := store.Open(path)
+	second, err := store.Open(t.Context(), path)
 	if err != nil {
 		t.Fatalf("reopen store: %v", err)
 	}
 	defer second.Close()
-	loaded, err := second.VAPIDKeys(keysFrom("private-2", "public-2"))
+	loaded, err := second.VAPIDKeys(t.Context(), keysFrom("private-2", "public-2"))
 	if err != nil {
 		t.Fatalf("vapid keys after reopen: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestVAPIDKeysStayAfterReopen(t *testing.T) {
 func TestLastReminderDate(t *testing.T) {
 	s := openStore(t)
 
-	initial, err := s.LastReminderDate()
+	initial, err := s.LastReminderDate(t.Context())
 	if err != nil {
 		t.Fatalf("last reminder date: %v", err)
 	}
@@ -263,14 +263,14 @@ func TestLastReminderDate(t *testing.T) {
 		t.Errorf("initial last reminder date = %v, want zero date", initial)
 	}
 
-	if err := s.SetLastReminderDate(date(t, "2026-10-14")); err != nil {
+	if err := s.SetLastReminderDate(t.Context(), date(t, "2026-10-14")); err != nil {
 		t.Fatalf("set last reminder date: %v", err)
 	}
-	if err := s.SetLastReminderDate(date(t, "2026-10-15")); err != nil {
+	if err := s.SetLastReminderDate(t.Context(), date(t, "2026-10-15")); err != nil {
 		t.Fatalf("set last reminder date again: %v", err)
 	}
 
-	got, err := s.LastReminderDate()
+	got, err := s.LastReminderDate(t.Context())
 	if err != nil {
 		t.Fatalf("last reminder date: %v", err)
 	}
@@ -281,12 +281,12 @@ func TestLastReminderDate(t *testing.T) {
 
 func TestMarkedReportsOneDay(t *testing.T) {
 	s := openStore(t)
-	if err := s.Mark(date(t, "2026-10-15")); err != nil {
+	if err := s.Mark(t.Context(), date(t, "2026-10-15")); err != nil {
 		t.Fatalf("mark: %v", err)
 	}
 
 	for day, want := range map[string]bool{"2026-10-15": true, "2026-10-14": false} {
-		got, err := s.Marked(date(t, day))
+		got, err := s.Marked(t.Context(), date(t, day))
 		if err != nil {
 			t.Fatalf("marked %s: %v", day, err)
 		}
