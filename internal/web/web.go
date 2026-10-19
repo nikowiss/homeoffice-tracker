@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"html/template"
+	"log"
 	"maps"
 	"net/http"
 	"net/url"
@@ -60,6 +61,11 @@ func NewHandler(s *store.Store, now func() time.Time, reminders ReminderSetup) h
 		})
 	}
 	return http.NewCrossOriginProtection().Handler(mux)
+}
+
+func serverError(w http.ResponseWriter, r *http.Request, err error) {
+	log.Printf("%s %s: %v", r.Method, r.URL.Path, err)
+	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 }
 
 func (s *server) today() civil.Date {
@@ -147,12 +153,12 @@ func (s *server) index(w http.ResponseWriter, r *http.Request) {
 	}
 	marked, err := s.markedLookup(years)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r, err)
 		return
 	}
 	counts, err := s.store.YearCounts()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r, err)
 		return
 	}
 	data := pageData{
@@ -172,7 +178,7 @@ func (s *server) index(w http.ResponseWriter, r *http.Request) {
 		data.ConfirmationBar = newConfirmationBar(state, marked)
 	}
 	if err := pageTemplate.Execute(w, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r, err)
 	}
 }
 
@@ -295,7 +301,7 @@ func (s *server) changeToday(w http.ResponseWriter, r *http.Request, write func(
 		return
 	}
 	if err := write(today); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, state.url(), http.StatusSeeOther)
@@ -338,7 +344,7 @@ func (s *server) changeTodayCell(w http.ResponseWriter, r *http.Request, write f
 	}
 	if day == today {
 		if err := write(day); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			serverError(w, r, err)
 			return
 		}
 	} else {
@@ -475,7 +481,7 @@ func (s *server) confirmSelection(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(mark) > 0 || len(unmark) > 0 {
 		if err := s.store.Apply(mark, unmark); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			serverError(w, r, err)
 			return
 		}
 	}
@@ -490,7 +496,7 @@ func (s *server) export(w http.ResponseWriter, r *http.Request) {
 	}
 	days, err := s.store.Days(year)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r, err)
 		return
 	}
 
