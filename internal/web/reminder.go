@@ -27,7 +27,7 @@ func (s *server) subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	err := s.store.SaveSubscription(store.Subscription{Endpoint: sub.Endpoint, P256dh: sub.Keys.P256dh, Auth: sub.Keys.Auth})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -40,7 +40,7 @@ func (s *server) unsubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.DeleteSubscription(sub.Endpoint); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -48,7 +48,7 @@ func (s *server) unsubscribe(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) sendTestReminder(w http.ResponseWriter, r *http.Request) {
 	if err := s.reminders.SendNow(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		serverError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
