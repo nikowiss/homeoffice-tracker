@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -25,14 +26,14 @@ type Store struct {
 	db *sql.DB
 }
 
-func Open(path string) (*Store, error) {
+func Open(ctx context.Context, path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
 	for _, statement := range schema {
-		if _, err := db.Exec(statement); err != nil {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
 			db.Close()
 			return nil, err
 		}
@@ -44,43 +45,43 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) Mark(day civil.Date) error {
-	_, err := s.db.Exec(markSQL, day.String())
+func (s *Store) Mark(ctx context.Context, day civil.Date) error {
+	_, err := s.db.ExecContext(ctx, markSQL, day.String())
 	return err
 }
 
-func (s *Store) Marked(day civil.Date) (bool, error) {
+func (s *Store) Marked(ctx context.Context, day civil.Date) (bool, error) {
 	var count int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM home_office_days WHERE date = ?`, day.String()).Scan(&count)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM home_office_days WHERE date = ?`, day.String()).Scan(&count)
 	return count > 0, err
 }
 
-func (s *Store) Unmark(day civil.Date) error {
-	_, err := s.db.Exec(unmarkSQL, day.String())
+func (s *Store) Unmark(ctx context.Context, day civil.Date) error {
+	_, err := s.db.ExecContext(ctx, unmarkSQL, day.String())
 	return err
 }
 
-func (s *Store) Apply(mark, unmark []civil.Date) error {
-	tx, err := s.db.Begin()
+func (s *Store) Apply(ctx context.Context, mark, unmark []civil.Date) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	for _, day := range mark {
-		if _, err := tx.Exec(markSQL, day.String()); err != nil {
+		if _, err := tx.ExecContext(ctx, markSQL, day.String()); err != nil {
 			return err
 		}
 	}
 	for _, day := range unmark {
-		if _, err := tx.Exec(unmarkSQL, day.String()); err != nil {
+		if _, err := tx.ExecContext(ctx, unmarkSQL, day.String()); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-func (s *Store) Days(year int) ([]civil.Date, error) {
-	rows, err := s.db.Query(
+func (s *Store) Days(ctx context.Context, year int) ([]civil.Date, error) {
+	rows, err := s.db.QueryContext(ctx,
 		`SELECT date FROM home_office_days WHERE date >= ? AND date < ? ORDER BY date`,
 		newYear(year).String(), newYear(year+1).String(),
 	)
@@ -108,8 +109,8 @@ func newYear(year int) civil.Date {
 	return civil.Date{Year: year, Month: time.January, Day: 1}
 }
 
-func (s *Store) YearCounts() (map[int]int, error) {
-	rows, err := s.db.Query(`SELECT CAST(substr(date, 1, 4) AS INTEGER), COUNT(*) FROM home_office_days GROUP BY 1`)
+func (s *Store) YearCounts(ctx context.Context) (map[int]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT CAST(substr(date, 1, 4) AS INTEGER), COUNT(*) FROM home_office_days GROUP BY 1`)
 	if err != nil {
 		return nil, err
 	}
@@ -132,8 +133,8 @@ type Subscription struct {
 	Auth     string
 }
 
-func (s *Store) SaveSubscription(sub Subscription) error {
-	_, err := s.db.Exec(
+func (s *Store) SaveSubscription(ctx context.Context, sub Subscription) error {
+	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO push_subscriptions (endpoint, p256dh, auth) VALUES (?, ?, ?)
 		 ON CONFLICT (endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
 		sub.Endpoint, sub.P256dh, sub.Auth,
@@ -141,13 +142,13 @@ func (s *Store) SaveSubscription(sub Subscription) error {
 	return err
 }
 
-func (s *Store) DeleteSubscription(endpoint string) error {
-	_, err := s.db.Exec(`DELETE FROM push_subscriptions WHERE endpoint = ?`, endpoint)
+func (s *Store) DeleteSubscription(ctx context.Context, endpoint string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE endpoint = ?`, endpoint)
 	return err
 }
 
-func (s *Store) Subscriptions() ([]Subscription, error) {
-	rows, err := s.db.Query(`SELECT endpoint, p256dh, auth FROM push_subscriptions ORDER BY endpoint`)
+func (s *Store) Subscriptions(ctx context.Context) ([]Subscription, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT endpoint, p256dh, auth FROM push_subscriptions ORDER BY endpoint`)
 	if err != nil {
 		return nil, err
 	}
@@ -177,9 +178,9 @@ type VAPIDKeys struct {
 	Public  string
 }
 
-func (s *Store) VAPIDKeys(generate func() (private, public string, err error)) (VAPIDKeys, error) {
+func (s *Store) VAPIDKeys(ctx context.Context, generate func() (private, public string, err error)) (VAPIDKeys, error) {
 	var keys VAPIDKeys
-	err := s.db.QueryRow(
+	err := s.db.QueryRowContext(ctx,
 		`SELECT private.value, public.value FROM settings private, settings public WHERE private.key = ? AND public.key = ?`,
 		vapidPrivateKey, vapidPublicKey,
 	).Scan(&keys.Private, &keys.Public)
@@ -194,22 +195,22 @@ func (s *Store) VAPIDKeys(generate func() (private, public string, err error)) (
 	if err != nil {
 		return VAPIDKeys{}, err
 	}
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return VAPIDKeys{}, err
 	}
 	defer tx.Rollback()
 	for key, value := range map[string]string{vapidPrivateKey: keys.Private, vapidPublicKey: keys.Public} {
-		if _, err := tx.Exec(setSettingSQL, key, value); err != nil {
+		if _, err := tx.ExecContext(ctx, setSettingSQL, key, value); err != nil {
 			return VAPIDKeys{}, err
 		}
 	}
 	return keys, tx.Commit()
 }
 
-func (s *Store) LastReminderDate() (civil.Date, error) {
+func (s *Store) LastReminderDate(ctx context.Context) (civil.Date, error) {
 	var raw string
-	err := s.db.QueryRow(`SELECT value FROM settings WHERE key = ?`, lastReminderDate).Scan(&raw)
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, lastReminderDate).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return civil.Date{}, nil
 	}
@@ -219,7 +220,7 @@ func (s *Store) LastReminderDate() (civil.Date, error) {
 	return civil.ParseDate(raw)
 }
 
-func (s *Store) SetLastReminderDate(day civil.Date) error {
-	_, err := s.db.Exec(setSettingSQL, lastReminderDate, day.String())
+func (s *Store) SetLastReminderDate(ctx context.Context, day civil.Date) error {
+	_, err := s.db.ExecContext(ctx, setSettingSQL, lastReminderDate, day.String())
 	return err
 }

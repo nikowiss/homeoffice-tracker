@@ -1,6 +1,7 @@
 package reminder_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"path/filepath"
@@ -24,7 +25,7 @@ type fakeSender struct {
 	sent     []sentPush
 }
 
-func (f *fakeSender) Send(sub store.Subscription, payload []byte, ttl int) (int, error) {
+func (f *fakeSender) Send(_ context.Context, sub store.Subscription, payload []byte, ttl int) (int, error) {
 	f.sent = append(f.sent, sentPush{Endpoint: sub.Endpoint, Payload: string(payload), TTL: ttl})
 	if f.err != nil {
 		return 0, f.err
@@ -45,7 +46,7 @@ func (f *fakeSender) endpoints() []string {
 
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "homeoffice.db"))
+	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "homeoffice.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -56,7 +57,7 @@ func openStore(t *testing.T) *store.Store {
 func subscribe(t *testing.T, s *store.Store, endpoints ...string) {
 	t.Helper()
 	for _, endpoint := range endpoints {
-		if err := s.SaveSubscription(store.Subscription{Endpoint: endpoint, P256dh: "key", Auth: "auth"}); err != nil {
+		if err := s.SaveSubscription(t.Context(), store.Subscription{Endpoint: endpoint, P256dh: "key", Auth: "auth"}); err != nil {
 			t.Fatalf("save subscription: %v", err)
 		}
 	}
@@ -70,7 +71,7 @@ func newService(t *testing.T, s *store.Store, sender reminder.Sender, now string
 
 func check(t *testing.T, service *reminder.Service) {
 	t.Helper()
-	if err := service.Check(); err != nil {
+	if err := service.Check(t.Context()); err != nil {
 		t.Fatalf("check: %v", err)
 	}
 }
@@ -125,7 +126,7 @@ func TestReminderComesAgainTheNextWeekday(t *testing.T) {
 func TestNoReminderWhenTodayIsMarked(t *testing.T) {
 	s := openStore(t)
 	subscribe(t, s, "https://push.example/a")
-	if err := s.Mark(date(t, "2026-10-15")); err != nil {
+	if err := s.Mark(t.Context(), date(t, "2026-10-15")); err != nil {
 		t.Fatalf("mark: %v", err)
 	}
 	sender := &fakeSender{}
@@ -169,7 +170,7 @@ func TestGoneSubscriptionsAreDeleted(t *testing.T) {
 
 	check(t, newService(t, s, sender, "2026-10-15 09:00"))
 
-	subs, err := s.Subscriptions()
+	subs, err := s.Subscriptions(t.Context())
 	if err != nil {
 		t.Fatalf("subscriptions: %v", err)
 	}
@@ -187,7 +188,7 @@ func TestSendNowIgnoresTheRulesAndDoesNotCountAsTodaysReminder(t *testing.T) {
 	subscribe(t, s, "https://push.example/a")
 	sender := &fakeSender{}
 
-	if err := newService(t, s, sender, "2026-10-15 08:00").SendNow(); err != nil {
+	if err := newService(t, s, sender, "2026-10-15 08:00").SendNow(t.Context()); err != nil {
 		t.Fatalf("send now: %v", err)
 	}
 	check(t, newService(t, s, sender, "2026-10-15 09:00"))
@@ -202,7 +203,7 @@ func TestNetworkErrorKeepsTheSubscription(t *testing.T) {
 
 	check(t, newService(t, s, offline, "2026-10-15 09:00"))
 
-	subs, err := s.Subscriptions()
+	subs, err := s.Subscriptions(t.Context())
 	if err != nil {
 		t.Fatalf("subscriptions: %v", err)
 	}

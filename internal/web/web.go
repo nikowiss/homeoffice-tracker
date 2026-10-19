@@ -1,11 +1,13 @@
 package web
 
 import (
+	"bytes"
+	"context"
 	"embed"
 	"encoding/csv"
 	"fmt"
 	"html/template"
-	"log"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/url"
@@ -30,7 +32,7 @@ var pageTemplate = template.Must(template.ParseFS(templateFS, "templates/index.h
 
 type ReminderSetup struct {
 	PublicKey string
-	SendNow   func() error
+	SendNow   func(context.Context) error
 }
 
 type server struct {
@@ -64,7 +66,7 @@ func NewHandler(s *store.Store, now func() time.Time, reminders ReminderSetup) h
 }
 
 func serverError(w http.ResponseWriter, r *http.Request, err error) {
-	log.Printf("%s %s: %v", r.Method, r.URL.Path, err)
+	slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 }
 
@@ -151,12 +153,12 @@ func (s *server) index(w http.ResponseWriter, r *http.Request) {
 	for _, day := range state.selection {
 		years = append(years, day.Year)
 	}
-	marked, err := s.markedLookup(years)
+	marked, err := s.markedLookup(r.Context(), years)
 	if err != nil {
 		serverError(w, r, err)
 		return
 	}
-	counts, err := s.store.YearCounts()
+	counts, err := s.store.YearCounts(r.Context())
 	if err != nil {
 		serverError(w, r, err)
 		return
@@ -177,18 +179,21 @@ func (s *server) index(w http.ResponseWriter, r *http.Request) {
 	if len(state.selection) > 0 {
 		data.ConfirmationBar = newConfirmationBar(state, marked)
 	}
-	if err := pageTemplate.Execute(w, data); err != nil {
+	var page bytes.Buffer
+	if err := pageTemplate.Execute(&page, data); err != nil {
 		serverError(w, r, err)
+		return
 	}
+	page.WriteTo(w)
 }
 
-func (s *server) markedLookup(years []int) (func(civil.Date) bool, error) {
+func (s *server) markedLookup(ctx context.Context, years []int) (func(civil.Date) bool, error) {
 	byYear := map[int][]civil.Date{}
 	for _, year := range years {
 		if _, ok := byYear[year]; ok {
 			continue
 		}
-		days, err := s.store.Days(year)
+		days, err := s.store.Days(ctx, year)
 		if err != nil {
 			return nil, err
 		}
@@ -293,14 +298,14 @@ func (s *server) unmarkToday(w http.ResponseWriter, r *http.Request) {
 	s.changeToday(w, r, s.store.Unmark)
 }
 
-func (s *server) changeToday(w http.ResponseWriter, r *http.Request, write func(civil.Date) error) {
+func (s *server) changeToday(w http.ResponseWriter, r *http.Request, write func(context.Context, civil.Date) error) {
 	today := s.today()
 	state, err := parsePageForm(r, today)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := write(today); err != nil {
+	if err := write(r.Context(), today); err != nil {
 		serverError(w, r, err)
 		return
 	}
@@ -324,7 +329,7 @@ func (s *server) unmarkTodayCell(w http.ResponseWriter, r *http.Request) {
 	s.changeTodayCell(w, r, s.store.Unmark)
 }
 
-func (s *server) changeTodayCell(w http.ResponseWriter, r *http.Request, write func(civil.Date) error) {
+func (s *server) changeTodayCell(w http.ResponseWriter, r *http.Request, write func(context.Context, civil.Date) error) {
 	day, ok := pathDate(w, r)
 	if !ok {
 		return
@@ -343,7 +348,7 @@ func (s *server) changeTodayCell(w http.ResponseWriter, r *http.Request, write f
 		state.month = firstOfMonth(day.Year, day.Month)
 	}
 	if day == today {
-		if err := write(day); err != nil {
+		if err := write(r.Context(), day); err != nil {
 			serverError(w, r, err)
 			return
 		}
@@ -480,7 +485,7 @@ func (s *server) confirmSelection(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(mark) > 0 || len(unmark) > 0 {
-		if err := s.store.Apply(mark, unmark); err != nil {
+		if err := s.store.Apply(r.Context(), mark, unmark); err != nil {
 			serverError(w, r, err)
 			return
 		}
@@ -494,7 +499,7 @@ func (s *server) export(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid year", http.StatusBadRequest)
 		return
 	}
-	days, err := s.store.Days(year)
+	days, err := s.store.Days(r.Context(), year)
 	if err != nil {
 		serverError(w, r, err)
 		return

@@ -10,7 +10,6 @@ import (
 
 func TestParseTimeOfDay(t *testing.T) {
 	valid := map[string]reminder.TimeOfDay{
-		"":      {Hour: 9, Minute: 0},
 		"09:00": {Hour: 9, Minute: 0},
 		"08:30": {Hour: 8, Minute: 30},
 		"00:00": {Hour: 0, Minute: 0},
@@ -27,7 +26,7 @@ func TestParseTimeOfDay(t *testing.T) {
 		}
 	}
 
-	for _, raw := range []string{"9:00", "24:00", "09:60", "abc", "09:00:00", " 09:00"} {
+	for _, raw := range []string{"", "9:00", "24:00", "09:60", "abc", "09:00:00", " 09:00"} {
 		if _, err := reminder.ParseTimeOfDay(raw); err == nil {
 			t.Errorf("ParseTimeOfDay(%q) gives no error", raw)
 		}
